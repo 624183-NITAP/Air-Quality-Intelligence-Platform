@@ -27,7 +27,7 @@ Under these trapped conditions, ground-level vehicular emissions, cold-engine id
 | **1. Code Quality** | • Strict TypeScript configuration (`"strict": true`, `"noImplicitAny": true`, `"strictNullChecks": true`)<br>• Zero `any` types across the entire codebase<br>• Unidirectional state flow with clear separation of concerns (Components, Data, Services, Utilities, Hooks)<br>• Clean modular design with no dead code or unhandled promises | • `npx tsc -b` exits 0 with zero errors<br>• `npx oxlint` passes with zero errors<br>• 100% type-safe interfaces in `src/types/index.ts` |
 | **2. Security** | • Server-side API proxy architecture (`/api/gemini` via zero-dependency Node engine & Vite middleware)<br>• Zero client bundle exposure of private secrets (no `VITE_` private credentials in bundles or Git)<br>• Header-based authorization (`x-goog-api-key`) with zero credential leakage in URLs or logs<br>• In-memory session key support for interactive testing (no persistent `localStorage`/`sessionStorage` secret storage)<br>• PII Masking (`anonymizeFamilyProfile`): strips surnames, names, and notes; categorizes ages into coarse brackets (`infant`, `child`, `adolescent`, `adult`, `senior`)<br>• Location Anonymization (`anonymizeLocationForAI`): truncates coordinates to 1 decimal place (~11 km regional grid)<br>• Crowdsource Location Privacy (`sanitizeLocationForPrivacy`): strips apartment, flat, door, plot numbers<br>• Server & client rate limiting (30 req/min/IP, 50 KB payload ceiling) & secret scrubbing (`scrubErrorDetails`) | • 18 automated security unit tests in `tests/security.test.ts`<br>• Verified header transmission via network mocking<br>• Standalone proxy in `server/geminiProxy.js` with rate limiting & input validation |
 | **3. Efficiency** | • Tab-level code splitting via `React.lazy` and `React.Suspense` with `TabLoadingSkeleton`<br>• In-flight network request deduplication (`inFlightRequests` Map)<br>• 15-minute `sessionStorage` caching with TTL validation<br>• Reusable `useDebounce` hook for geocoding search queries<br>• `AbortController` cancellation for rapid typing / in-flight requests | • Production bundle split into 6 lazy tab chunks (12–43 kB gzip)<br>• Concurrent duplicate requests execute only 1 network fetch<br>• Sub-second response from local cache |
-| **4. Testing** | • Comprehensive Vitest testing suite covering unit, integration, edge cases, and accessibility<br>• Mocked deterministic Open-Meteo & Gemini endpoints (zero reliance on external network availability during tests)<br>• 72 tests across 5 test suites covering calculations, APIs, AI service, security, and accessibility | • **89.81% Statement Coverage** across core modules<br>• **90.87% Line Coverage**<br>• **100% test pass rate (72/72 passed)** |
+| **4. Testing** | • Comprehensive Vitest testing suite covering unit, integration, edge cases, accessibility, and production server<br>• Mocked deterministic Open-Meteo & Gemini endpoints (zero reliance on external network availability during tests)<br>• 88 tests across 6 test suites covering calculations, APIs, AI service, security, server endpoints, and accessibility | • **89.81% Statement Coverage** across core modules<br>• **90.87% Line Coverage**<br>• **100% test pass rate (88/88 passed)** |
 | **5. Accessibility** | • Accessible focus trap (`useFocusTrap`) for all modals with Tab cycling and Escape key listeners<br>• Focus restoration to trigger elements upon modal close<br>• "Skip to main content" landmark link (`#main-content`)<br>• Semantic HTML (`role="dialog"`, `aria-modal="true"`, `aria-labelledby`, `role="status"`)<br>• WCAG 2.2 AA color contrast & visual focus outlines (`:focus-visible`)<br>• AQI severity communicated via numerical values, category badges, and health rationale—never color alone<br>• Motion reduction support (`prefers-reduced-motion: reduce`) | • 6 automated accessibility tests in `tests/accessibility.test.tsx`<br>• Verified Tab key cycling & focus restoration |
 | **6. Problem Statement** | • Personalized GenAI daily routines optimized for household vulnerability profiles (infants, asthmatics, seniors)<br>• Location-aware atmospheric inversion analysis with hourly ventilation suitability index<br>• Single-zone mass-balance differential equation solver for room PM2.5 decay<br>• DIY Corsi-Rosenthal Box aerodynamics calculator with cardboard shroud engineering (+18% CADR)<br>• Clean heating and cooking transition tools comparing direct vs upstream grid emissions | • Directly targets winter smog crisis in urban basins<br>• Grounded in CPCB, EPA, ASHRAE, and Berkeley Earth scientific literature |
 
@@ -232,8 +232,8 @@ All files          |   89.81 |    75.42 |    87.5 |   90.87 |
   security.ts      |   97.05 |    91.83 |     100 |   96.77 | 127               
 -------------------|---------|----------|---------|---------|-------------------
 
-Test Files  5 passed (5)
-Tests       72 passed (72)
+Test Files  6 passed (6)
+Tests       88 passed (88)
 Pass Rate   100%
 ```
 
@@ -272,7 +272,20 @@ Pass Rate   100%
    - Exponential backoff retry on HTTP 429 / 503
    - Immediate fallback without retry on HTTP 400 / 401
    - 8-part structured breakdown parsing
-5. `tests/accessibility.test.tsx` (6 tests):
+5. `tests/server.test.ts` (16 tests):
+   - Health check endpoint `GET /api/health` (Render health check)
+   - Gemini proxy `POST /api/gemini` method enforcement (405 on non-POST)
+   - Input validation: empty body and invalid JSON rejection (400)
+   - Payload size ceiling: 50 KB ceiling enforcement (413)
+   - Missing server-side `GEMINI_API_KEY` handling (503 with fallbackRequired)
+   - Upstream Gemini API forwarding with header authorization & secret scrubbing
+   - Upstream error handling (500) and request timeout / abort handling (504)
+   - In-memory sliding-window IP rate limiting (30 requests/minute/IP)
+   - Static asset serving from `dist/` with immutable cache headers for hashed assets
+   - SPA Fallback routing (HTML5 history mode) for client routes
+   - Directory traversal protection (403 Forbidden on `..` segments)
+   - Missing static asset 404 rejection (does not confuse browser with HTML fallback)
+6. `tests/accessibility.test.tsx` (6 tests):
    - Modal focus trapping (`useFocusTrap`)
    - Escape key listener
    - Tab and Shift+Tab focus cycling between first and last focusable elements
@@ -286,6 +299,7 @@ Pass Rate   100%
 ```
 prompt6/
 ├── server/
+│   ├── server.js                       # Production Node.js server serving dist/ & /api/gemini with SPA fallback
 │   └── geminiProxy.js                  # Zero-dependency Node proxy for /api/gemini with rate limiting & sanitization
 ├── src/
 │   ├── components/
@@ -324,7 +338,11 @@ prompt6/
 │   ├── security.test.ts                # Security & privacy tests (18 tests)
 │   ├── airQualityApi.test.ts           # Open-Meteo API integration tests (10 tests)
 │   ├── aiService.test.ts               # Gemini API, proxy, & deterministic engine tests (10 tests)
+│   ├── server.test.ts                  # Production server & proxy integration tests (16 tests)
 │   └── accessibility.test.tsx          # Focus trap & debounce hook tests (6 tests)
+├── scripts/
+│   └── verify-production.js            # Live HTTP production verification test suite (6 checks)
+├── render.yaml                         # Render Blueprint specification for ONE Web Service
 ├── .env.example                        # Safe server-side environment variable configuration template
 ├── package.json
 ├── tsconfig.app.json                   # Strict TypeScript compiler options
@@ -346,7 +364,7 @@ prompt6/
 # 1. Install dependencies
 npm install
 
-# 2. Run automated test suite (72 tests)
+# 2. Run complete automated test suite (88 tests across 6 test suites)
 npm test
 
 # 3. Run automated tests with coverage report (V8 engine)
@@ -356,30 +374,99 @@ npm run test:coverage # or npx vitest run --coverage
 npx tsc -b
 
 # 5. Run linter verification (oxlint)
-npx oxlint
+npm run lint # or npx oxlint
 
 # 6. Start local development server (with built-in /api/gemini proxy)
 npm run dev
 
-# 7. (Optional) Run standalone Node API proxy
-node server/geminiProxy.js
-
-# 8. Build optimized production bundle
+# 7. Build optimized production bundle into dist/
 npm run build
-```
 
-# 5. Run linter verification (oxlint)
-npx oxlint
+# 8. Launch unified production server (serves dist/ & /api/gemini)
+npm start
 
-# 6. Start local development server
-npm run dev
-
-# 7. Build optimized production bundle
-npm run build
+# 9. Verify live production HTTP endpoints
+node scripts/verify-production.js
 ```
 
 ---
 
-## 9. Non-Medical Environmental Limitation Notice
+## 9. Render Deployment Guide (ONE Unified Web Service)
+
+AeroPulse 2.0 is architected to deploy as **ONE single Render Web Service** rather than split into disparate static and backend services. This provides several production advantages:
+1. **Zero CORS Friction**: The React SPA and the `/api/gemini` backend proxy run on the exact same origin.
+2. **Zero Client Secret Leakage**: `GEMINI_API_KEY` is loaded exclusively in the server environment and is never bundled into client JavaScript.
+3. **HTML5 History Fallback**: The production server (`server/server.js`) transparently serves `dist/index.html` on direct visits or page refreshes.
+4. **Automated Health Monitoring**: Zero-downtime deploys and health monitoring via `/api/health`.
+
+### Step-by-Step Render Deployment
+
+#### Step 1: Create a New Web Service
+1. Log in to your [Render Dashboard](https://dashboard.render.com/).
+2. Click **New +** and select **Web Service**.
+3. Connect your GitHub repository:
+   `https://github.com/624183-NITAP/Air-Quality-Intelligence-Platform.git`
+
+#### Step 2: Configure Service Settings
+| Setting | Recommended Value |
+| :--- | :--- |
+| **Name** | `aeropulse-2` |
+| **Region** | `Oregon (US West)` or your closest region |
+| **Branch** | `main` |
+| **Root Directory** | *(Leave blank / root)* |
+| **Runtime** | `Node` |
+| **Build Command** | `npm ci && npm run build` |
+| **Start Command** | `npm start` |
+| **Instance Type** | `Free` |
+
+#### Step 3: Configure Environment Variables
+In the **Environment** tab of your Render service, add the following environment variable:
+
+| Key | Value | Purpose |
+| :--- | :--- | :--- |
+| `NODE_ENV` | `production` | Enables production optimizations and disables debug logs |
+| `GEMINI_API_KEY` | `AIzaSy...` *(your secret key)* | Server-side Gemini API authentication |
+
+> [!IMPORTANT]
+> Do NOT set `VITE_GEMINI_API_KEY`. AeroPulse 2.0 uses secure server-side environment variables (`process.env.GEMINI_API_KEY`) so credentials are never bundled into client-side code.
+> 
+> Note: Render automatically provides the `PORT` environment variable (e.g. `10000`). AeroPulse 2.0 automatically binds to `0.0.0.0` and listens on `process.env.PORT`.
+
+#### Step 4: Health Check Configuration
+In **Advanced Settings**:
+* **Health Check Path**: `/api/health`
+
+Render will query `GET /api/health` to confirm the service is healthy before completing zero-downtime deploys.
+
+#### Step 5: Verification of Live Deployment
+Once deployed, verify your live service:
+```bash
+# 1. Verify health monitoring endpoint
+curl -i https://<your-service-name>.onrender.com/api/health
+# Expected: HTTP/1.1 200 OK, {"status":"ok","service":"AeroPulse 2.0",...}
+
+# 2. Verify SPA frontend root
+curl -i https://<your-service-name>.onrender.com/
+# Expected: HTTP/1.1 200 OK, Content-Type: text/html, includes <div id="root">
+
+# 3. Verify SPA fallback on direct route refresh
+curl -i https://<your-service-name>.onrender.com/daily-routine
+# Expected: HTTP/1.1 200 OK, serves index.html
+
+# 4. Verify Gemini proxy endpoint
+curl -i -X POST https://<your-service-name>.onrender.com/api/gemini \
+  -H "Content-Type: application/json" \
+  -d '{"prompt":"Explain thermal inversion"}'
+# Expected: HTTP/1.1 200 OK, returns JSON response with model text
+```
+
+#### Alternative: 1-Click Render Blueprint Deployment
+AeroPulse 2.0 includes a pre-configured `render.yaml` specification at the repository root. To deploy via Blueprint:
+1. In Render, select **New +** > **Blueprint**.
+2. Select your repository. Render will automatically detect `render.yaml`, configure the Web Service, and prompt you to input your `GEMINI_API_KEY`.
+
+---
+
+## 10. Non-Medical Environmental Limitation Notice
 
 AeroPulse 2.0 is an environmental intelligence and indoor aerosol engineering platform. It calculates ambient pollutant dispersion, fluid dynamics, and personal time-weighted inhalation exposure. It is **not a clinical diagnostic device** and does not constitute formal medical diagnosis, individualized drug therapy, or clinical treatment. Users experiencing acute respiratory symptoms (severe wheezing, chest retractions, cyanosis) must consult a certified pulmonologist or contact national emergency medical services immediately.
