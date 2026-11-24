@@ -1,7 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   sanitizeUserInput,
   anonymizeFamilyProfile,
+  anonymizeLocationForAI,
   sanitizeLocationForPrivacy,
   scrubErrorDetails,
   resolveGeminiApiKey
@@ -105,11 +106,11 @@ describe('Security and Privacy Hardening (security.ts)', () => {
       expect(anonymized.householdSummary).not.toContain('nocturnal wheezing');
     });
 
-    it('preserves physiological classifications and risk categories for aerosol simulation', () => {
+    it('preserves physiological classifications and coarse age bands for aerosol simulation', () => {
       const anonymized = anonymizeFamilyProfile(testProfile);
 
-      expect(anonymized.householdSummary).toContain('infant (age 1)');
-      expect(anonymized.householdSummary).toContain('senior (age 72)');
+      expect(anonymized.householdSummary).toContain('infant (0-2y)');
+      expect(anonymized.householdSummary).toContain('senior (60+y)');
       expect(anonymized.householdSummary).toContain('cardiovascular sensitivity');
       expect(anonymized.householdSummary).toContain('respiratory sensitivity (asthma/COPD)');
       expect(anonymized.householdSummary).toContain('pregnant');
@@ -154,9 +155,23 @@ describe('Security and Privacy Hardening (security.ts)', () => {
   });
 
   // ==========================================================================
-  // 3. LOCATION PRIVACY IN CROWDSOURCING
+  // 3. LOCATION PRIVACY IN AI AND CROWDSOURCING
   // ==========================================================================
-  describe('sanitizeLocationForPrivacy', () => {
+  describe('Location Privacy (anonymizeLocationForAI & sanitizeLocationForPrivacy)', () => {
+    it('truncates latitude and longitude to 1 decimal place (~11 km regional box) for AI queries', () => {
+      const exactLoc = {
+        city: 'South Extension Part 2, New Delhi',
+        country: 'India',
+        latitude: 28.5678912,
+        longitude: 77.2189423,
+      };
+      const anon = anonymizeLocationForAI(exactLoc);
+      expect(anon.approxLatitude).toBe(28.6);
+      expect(anon.approxLongitude).toBe(77.2);
+      expect(anon.city).toBe('South Extension Part 2, New Delhi');
+      expect(anon.country).toBe('India');
+    });
+
     it('strips apartment, flat, door, plot, and house numbers', () => {
       const raw1 = 'Flat 402, Tower B, Godrej Woods, Sector 43';
       expect(sanitizeLocationForPrivacy(raw1)).not.toContain('402');
@@ -209,25 +224,14 @@ describe('Security and Privacy Hardening (security.ts)', () => {
   // 5. SECURE API KEY RESOLUTION
   // ==========================================================================
   describe('resolveGeminiApiKey', () => {
-    beforeEach(() => {
-      vi.unstubAllEnvs();
+    it('accepts valid session developer key with format check', () => {
+      const userKey = 'AIzaSyA1B2C3D4E5F6G7H8I9J0K1L2M3N4O5P6Q';
+      expect(resolveGeminiApiKey(userKey)).toBe(userKey);
     });
 
-    it('prefers valid user-provided key over environment variable', () => {
-      vi.stubEnv('VITE_GEMINI_API_KEY', 'env-key-long-enough-123456');
-      const userKey = 'user-key-long-enough-987654';
-      expect(resolveGeminiApiKey(userKey)).toBe('user-key-long-enough-987654');
-    });
-
-    it('falls back to environment variable when user key is empty or too short', () => {
-      vi.stubEnv('VITE_GEMINI_API_KEY', 'env-key-long-enough-123456');
-      expect(resolveGeminiApiKey('')).toBe('env-key-long-enough-123456');
-      expect(resolveGeminiApiKey('short')).toBe('env-key-long-enough-123456');
-    });
-
-    it('returns empty string when neither is available', () => {
-      vi.stubEnv('VITE_GEMINI_API_KEY', '');
+    it('rejects short or empty keys', () => {
       expect(resolveGeminiApiKey('')).toBe('');
+      expect(resolveGeminiApiKey('short')).toBe('');
       expect(resolveGeminiApiKey(undefined)).toBe('');
     });
   });

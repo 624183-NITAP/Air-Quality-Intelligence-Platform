@@ -584,7 +584,7 @@ export const IndoorStudioTab: React.FC<IndoorStudioTabProps> = ({
             {/* Engineering Assumptions Checklist */}
             <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-[11px] text-slate-400 space-y-1">
               <strong className="text-slate-300 block mb-1">Engineering Model Assumptions:</strong>
-              {crSpecs.assumptions.map((ass, i) => (
+              {(crSpecs.assumptions || []).map((ass, i) => (
                 <div key={i} className="flex items-start gap-1.5">
                   <span className="text-cyan-400">•</span>
                   <span>{ass}</span>

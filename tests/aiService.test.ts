@@ -199,6 +199,14 @@ Non-medical advice. Sensor inaccuracy ±15%.
       let capturedHeaders: Record<string, string> = {};
 
       global.fetch = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+        if (url.includes('/api/gemini')) {
+          // Simulate server proxy unconfigured, routing to direct developer-key path
+          return Promise.resolve({
+            ok: false,
+            status: 503,
+            json: async () => ({ fallbackRequired: true })
+          });
+        }
         capturedUrl = url;
         capturedHeaders = (init?.headers as Record<string, string>) || {};
         return Promise.resolve({
@@ -238,7 +246,10 @@ Non-medical advice. Sensor inaccuracy ±15%.
 
     it('retries with exponential backoff on HTTP 429 and falls back safely to deterministic engine', async () => {
       let callCount = 0;
-      global.fetch = vi.fn().mockImplementation(() => {
+      global.fetch = vi.fn().mockImplementation((url: string) => {
+        if (url.includes('/api/gemini')) {
+          return Promise.resolve({ ok: false, status: 503, json: async () => ({ fallbackRequired: true }) });
+        }
         callCount++;
         return Promise.resolve({
           ok: false,
@@ -264,7 +275,10 @@ Non-medical advice. Sensor inaccuracy ±15%.
 
     it('does not retry 400 Bad Request or 401 Unauthorized errors and falls back immediately', async () => {
       let callCount = 0;
-      global.fetch = vi.fn().mockImplementation(() => {
+      global.fetch = vi.fn().mockImplementation((url: string) => {
+        if (url.includes('/api/gemini')) {
+          return Promise.resolve({ ok: false, status: 503, json: async () => ({ fallbackRequired: true }) });
+        }
         callCount++;
         return Promise.resolve({
           ok: false,
@@ -284,6 +298,61 @@ Non-medical advice. Sensor inaccuracy ±15%.
       // No retries for 401 (only 1 attempt)
       expect(callCount).toBe(1);
       expect(res.sender).toBe('assistant');
+    });
+
+    it('successfully consumes secure server proxy (/api/gemini) responses', async () => {
+      global.fetch = vi.fn().mockImplementation((url: string) => {
+        if (url.includes('/api/gemini')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ text: 'PART 1: CURRENT SITUATION\nClean indoor haven active.' })
+          });
+        }
+        return Promise.reject(new Error('Unknown url'));
+      });
+
+      const res = await askAeroAI({
+        userPrompt: 'Tell me about clean indoor haven',
+        conversationHistory: [],
+        profile: mockProfile,
+        currentLocation: mockLocation,
+      });
+
+      expect(res.sender).toBe('assistant');
+      expect(res.text).toContain('Clean indoor haven active.');
+    });
+
+    it('includes bounded multi-turn conversation history in server payload', async () => {
+      let capturedBody: { contents: Array<{ role: string; parts: Array<{ text: string }> }> } | null = null;
+      global.fetch = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+        if (url.includes('/api/gemini')) {
+          capturedBody = JSON.parse(init?.body as string);
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ text: 'PART 1: CURRENT SITUATION\nContinuing previous advice.' })
+          });
+        }
+        return Promise.reject(new Error('Unknown url'));
+      });
+
+      const history = [
+        { id: '1', sender: 'user' as const, timestamp: '10:00', text: 'My child has asthma.' },
+        { id: '2', sender: 'assistant' as const, timestamp: '10:01', text: 'Seal bedroom windows with silicone weatherstripping.' }
+      ];
+
+      await askAeroAI({
+        userPrompt: 'What should we do during bedtime?',
+        conversationHistory: history,
+        profile: mockProfile,
+        currentLocation: mockLocation,
+      });
+
+      expect(capturedBody).toBeDefined();
+      expect(capturedBody?.contents.length).toBe(3); // 2 history turns + 1 current prompt
+      expect(capturedBody?.contents[0].role).toBe('user');
+      expect(capturedBody?.contents[0].parts[0].text).toContain('asthma');
+      expect(capturedBody?.contents[1].role).toBe('model');
+      expect(capturedBody?.contents[1].parts[0].text).toContain('silicone');
     });
   });
 });

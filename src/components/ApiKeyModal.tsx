@@ -50,8 +50,8 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
               <Key className="w-5 h-5" />
             </div>
             <div>
-              <h3 id="api-key-modal-title" className="font-bold text-white text-base">Google Gemini API Key</h3>
-              <p className="text-xs text-slate-400">Optional live GenAI integration</p>
+              <h3 id="api-key-modal-title" className="font-bold text-white text-base">Secure AI Architecture & API Proxy</h3>
+              <p className="text-xs text-slate-400">Server-Side Proxy & Session Authentication</p>
             </div>
           </div>
           <button 
@@ -63,12 +63,21 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
           </button>
         </div>
 
-        <p className="text-xs text-slate-300 leading-relaxed">
-          AeroPulse includes a high-fidelity built-in atmospheric neuro-heuristic model. If you wish to connect directly to <strong>Google Gemini 2.0 Flash</strong> for unbounded live queries, enter your API key below.
-        </p>
+        {/* Security architecture notice */}
+        <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-2 text-xs text-slate-300">
+          <div className="flex items-center gap-2 text-cyan-400 font-semibold">
+            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+            <span>Production Security Architecture</span>
+          </div>
+          <p className="leading-relaxed text-slate-400">
+            In production deployments, AeroPulse routes AI requests through its secure server-side API proxy (<code>/api/gemini</code>) backed by <code>GEMINI_API_KEY</code>. Credentials are <strong>never</strong> bundled into frontend JavaScript or stored in browser <code>localStorage</code>.
+          </p>
+        </div>
 
         <div>
-          <label className="text-xs font-semibold text-slate-300">Gemini API Key</label>
+          <label className="text-xs font-semibold text-slate-300">
+            Developer Session Override (Testing Only)
+          </label>
           <input
             type="password"
             value={val}
@@ -77,7 +86,7 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
             className="w-full mt-1.5 bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-cyan-500 font-mono"
           />
           <div className="flex items-center justify-between mt-1 text-[11px] text-slate-500">
-            <span>Keys are stored strictly in your local browser storage.</span>
+            <span>Session memory only; never persisted to localStorage.</span>
             <a
               href="https://aistudio.google.com/app/apikey"
               target="_blank"
@@ -95,7 +104,7 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
               onClick={handleClear}
               className="text-xs text-rose-400 hover:underline"
             >
-              Remove Stored Key
+              Clear Session Key
             </button>
           ) : <div />}
 

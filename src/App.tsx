@@ -96,14 +96,8 @@ export const App: React.FC = () => {
   const [hourlyForecast, setHourlyForecast] = useState<HourlyForecast[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Gemini API Key state
-  const [apiKey, setApiKey] = useState<string>(() => {
-    try {
-      return localStorage.getItem('aeropulse_gemini_api_key') || '';
-    } catch {
-      return '';
-    }
-  });
+  // Gemini API Key state - strictly session memory only; never stored in browser localStorage
+  const [apiKey, setApiKey] = useState<string>('');
 
   // Active Tab navigation
   const [activeTab, setActiveTab] = useState<'intelligence' | 'routines' | 'indoor' | 'assistant' | 'community' | 'cleanheat'>('intelligence');
@@ -162,12 +156,9 @@ export const App: React.FC = () => {
     handleSaveProfile({ ...profile, preferredAQIScale: scale });
   };
 
-  // Save API key changes
+  // Save API key changes (session memory only)
   const handleSaveApiKey = (key: string) => {
     setApiKey(key);
-    try {
-      localStorage.setItem('aeropulse_gemini_api_key', key);
-    } catch {}
   };
 
   const handleSelectLocation = (loc: LocationData) => {

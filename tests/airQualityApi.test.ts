@@ -247,6 +247,42 @@ describe('Air Quality & Meteorological API Service (airQualityApi.ts)', () => {
       expect(result.hourlyForecast.length).toBeGreaterThan(0);
     });
 
+    it('accurately aligns boundary layer height to the observation timestamp index (not blindly index 0)', async () => {
+      // Mock observation time at 11:00 where BLH expanded to 380m
+      const mockDelayedWeather = {
+        current: {
+          time: '2026-11-24T11:00',
+          temperature_2m: 16.5,
+          relative_humidity_2m: 65,
+          wind_speed_10m: 6.5,
+          wind_direction_10m: 270,
+        },
+        hourly: {
+          time: ['2026-11-24T10:00', '2026-11-24T11:00'],
+          boundary_layer_height: [140, 380],
+        }
+      };
+
+      global.fetch = vi.fn().mockImplementation((url: string) => {
+        if (url.includes('air-quality')) {
+          return Promise.resolve({ ok: true, json: async () => mockAQResponse });
+        }
+        return Promise.resolve({ ok: true, json: async () => mockDelayedWeather });
+      });
+
+      const { locationData } = await fetchLiveAirQualityAndWeather(
+        28.61,
+        77.23,
+        'New Delhi',
+        'Delhi NCR',
+        'India'
+      );
+
+      // Verify that 11:00 timestamp selected index 1 (380m) instead of index 0 (140m)
+      expect(locationData.weather.boundaryLayerHeightMeters).toBe(380);
+      expect(locationData.weather.inversionCondition).toBe('Weak Surface Boundary');
+    });
+
     it('re-throws network error when no fallbackBase is provided', async () => {
       global.fetch = vi.fn().mockRejectedValue(new Error('Network error'));
       await expect(

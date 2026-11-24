@@ -122,7 +122,7 @@ Ask me anything about protecting family airways, timing micro-shifts around the 
         conversationHistory: [...messages, userMessage],
         profile,
         currentLocation: location,
-        apiKey: resolveGeminiApiKey(apiKey),
+        apiKey: apiKey ? resolveGeminiApiKey(apiKey) : undefined,
         model: selectedModel,
       });
 

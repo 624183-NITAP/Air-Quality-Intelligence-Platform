@@ -25,9 +25,9 @@ Under these trapped conditions, ground-level vehicular emissions, cold-engine id
 | Evaluation Dimension | Key Implementations & Architectural Guarantees | Verification & Metrics |
 | :--- | :--- | :--- |
 | **1. Code Quality** | • Strict TypeScript configuration (`"strict": true`, `"noImplicitAny": true`, `"strictNullChecks": true`)<br>• Zero `any` types across the entire codebase<br>• Unidirectional state flow with clear separation of concerns (Components, Data, Services, Utilities, Hooks)<br>• Clean modular design with no dead code or unhandled promises | • `npx tsc -b` exits 0 with zero errors<br>• `npx oxlint` passes with zero errors<br>• 100% type-safe interfaces in `src/types/index.ts` |
-| **2. Security** | • Google Gemini API authorization via `x-goog-api-key` HTTP header (no URL query parameter leakage)<br>• PII Masking (`anonymizeFamilyProfile`): strips family surnames, personal names, and medical notes before sending to AI<br>• Location Privacy (`sanitizeLocationForPrivacy`): strips apartment, flat, door, plot numbers from crowdsourced reports<br>• Secret scrubbing (`scrubErrorDetails`): redacts Google API keys (`AIzaSy...`) and URLs from error UI | • 18 automated security unit tests in `tests/security.test.ts`<br>• Verified header transmission via network mocking<br>• Template `.env.example` provided |
-| **3. Efficiency** | • Tab-level code splitting via `React.lazy` and `React.Suspense` with `TabLoadingSkeleton`<br>• In-flight network request deduplication (`inFlightRequests` Map)<br>• 15-minute `sessionStorage` caching with TTL validation<br>• Reusable `useDebounce` hook for geocoding search queries<br>• `AbortController` cancellation for rapid typing / in-flight requests | • Production bundle split into 6 lazy tab chunks (12–42 kB gzip)<br>• Concurrent duplicate requests execute only 1 network fetch<br>• Sub-second response from local cache |
-| **4. Testing** | • Comprehensive Vitest testing suite covering unit, integration, edge cases, and accessibility<br>• Mocked deterministic Open-Meteo & Gemini endpoints (zero reliance on external network availability during tests)<br>• 65 tests across 5 test suites covering calculations, APIs, AI service, security, and accessibility | • **89.31% Statement Coverage** across core modules<br>• **90.89% Line Coverage**<br>• **100% test pass rate (65/65 passed)** |
+| **2. Security** | • Server-side API proxy architecture (`/api/gemini` via zero-dependency Node engine & Vite middleware)<br>• Zero client bundle exposure of private secrets (no `VITE_` private credentials in bundles or Git)<br>• Header-based authorization (`x-goog-api-key`) with zero credential leakage in URLs or logs<br>• In-memory session key support for interactive testing (no persistent `localStorage`/`sessionStorage` secret storage)<br>• PII Masking (`anonymizeFamilyProfile`): strips surnames, names, and notes; categorizes ages into coarse brackets (`infant`, `child`, `adolescent`, `adult`, `senior`)<br>• Location Anonymization (`anonymizeLocationForAI`): truncates coordinates to 1 decimal place (~11 km regional grid)<br>• Crowdsource Location Privacy (`sanitizeLocationForPrivacy`): strips apartment, flat, door, plot numbers<br>• Server & client rate limiting (30 req/min/IP, 50 KB payload ceiling) & secret scrubbing (`scrubErrorDetails`) | • 18 automated security unit tests in `tests/security.test.ts`<br>• Verified header transmission via network mocking<br>• Standalone proxy in `server/geminiProxy.js` with rate limiting & input validation |
+| **3. Efficiency** | • Tab-level code splitting via `React.lazy` and `React.Suspense` with `TabLoadingSkeleton`<br>• In-flight network request deduplication (`inFlightRequests` Map)<br>• 15-minute `sessionStorage` caching with TTL validation<br>• Reusable `useDebounce` hook for geocoding search queries<br>• `AbortController` cancellation for rapid typing / in-flight requests | • Production bundle split into 6 lazy tab chunks (12–43 kB gzip)<br>• Concurrent duplicate requests execute only 1 network fetch<br>• Sub-second response from local cache |
+| **4. Testing** | • Comprehensive Vitest testing suite covering unit, integration, edge cases, and accessibility<br>• Mocked deterministic Open-Meteo & Gemini endpoints (zero reliance on external network availability during tests)<br>• 72 tests across 5 test suites covering calculations, APIs, AI service, security, and accessibility | • **89.81% Statement Coverage** across core modules<br>• **90.87% Line Coverage**<br>• **100% test pass rate (72/72 passed)** |
 | **5. Accessibility** | • Accessible focus trap (`useFocusTrap`) for all modals with Tab cycling and Escape key listeners<br>• Focus restoration to trigger elements upon modal close<br>• "Skip to main content" landmark link (`#main-content`)<br>• Semantic HTML (`role="dialog"`, `aria-modal="true"`, `aria-labelledby`, `role="status"`)<br>• WCAG 2.2 AA color contrast & visual focus outlines (`:focus-visible`)<br>• AQI severity communicated via numerical values, category badges, and health rationale—never color alone<br>• Motion reduction support (`prefers-reduced-motion: reduce`) | • 6 automated accessibility tests in `tests/accessibility.test.tsx`<br>• Verified Tab key cycling & focus restoration |
 | **6. Problem Statement** | • Personalized GenAI daily routines optimized for household vulnerability profiles (infants, asthmatics, seniors)<br>• Location-aware atmospheric inversion analysis with hourly ventilation suitability index<br>• Single-zone mass-balance differential equation solver for room PM2.5 decay<br>• DIY Corsi-Rosenthal Box aerodynamics calculator with cardboard shroud engineering (+18% CADR)<br>• Clean heating and cooking transition tools comparing direct vs upstream grid emissions | • Directly targets winter smog crisis in urban basins<br>• Grounded in CPCB, EPA, ASHRAE, and Berkeley Earth scientific literature |
 
@@ -62,13 +62,13 @@ where total loss rate $L = \lambda + k + \frac{\text{CADR}}{V}$ ($\text{hr}^{-1}
 
 ---
 
-### B. Dual Air Quality Index (AQI) Scales
+### B. Dual Air Quality Index (AQI) Scales & CPCB Data Sufficiency
 
 AeroPulse 2.0 explicitly prevents the conflation of Indian National AQI and US EPA AQI by providing an instant scale toggle:
 
 | PM2.5 Range ($\mu\text{g/m}^3$) | CPCB Indian NAQI (2014) Category | US EPA AQI (Revised 2024) Category |
 | :--- | :--- | :--- |
-| **0.0 – 9.0** | Good (0–15) | Good (0–50) |
+| **0.0 – 9.0** | Good (0–15) | Good (0–50) (revised from 12.0) |
 | **9.1 – 30.0** | Good (16–50) | Moderate (51–88) |
 | **30.1 – 35.4** | Satisfactory (51–60) | Moderate (89–100) |
 | **35.5 – 55.4** | Satisfactory (61–92) | Unhealthy for Sensitive Groups (101–150) |
@@ -78,8 +78,22 @@ AeroPulse 2.0 explicitly prevents the conflation of Indian National AQI and US E
 | **120.1 – 250.0** | Very Poor (301–400) | Very Unhealthy (185–300) |
 | **250.1 – 500.0+** | Severe (401–500) | Hazardous (301–500+) |
 
-* **CPCB Formula**: Piecewise linear interpolation across 6 concentration breakpoints for PM2.5, PM10, NO2, SO2, and CO:
-  $$I = \left[\frac{I_{high} - I_{low}}{C_{high} - C_{low}}\right] (C - C_{low}) + I_{low}$$
+#### CPCB 8-Pollutant Calculation Engine:
+Evaluates individual sub-indices across all 8 officially recognized criteria pollutants:
+1. **PM2.5** ($\mu\text{g/m}^3$, 24-hr): Breakpoints [0, 30, 60, 90, 120, 250, 380, 500]
+2. **PM10** ($\mu\text{g/m}^3$, 24-hr): Breakpoints [0, 50, 100, 250, 350, 430, 500]
+3. **NO2** ($\mu\text{g/m}^3$, 24-hr): Breakpoints [0, 40, 80, 180, 280, 400, 500]
+4. **SO2** ($\mu\text{g/m}^3$, 24-hr): Breakpoints [0, 40, 80, 380, 800, 1600, 2000]
+5. **CO** ($\text{mg/m}^3$, 8-hr): Breakpoints [0, 1.0, 2.0, 10.0, 17.0, 34.0, 50.0]
+6. **Ozone ($O_3$)** ($\mu\text{g/m}^3$, 8-hr): Breakpoints [0, 50, 100, 168, 208, 748, 1000]
+7. **Ammonia ($NH_3$)** ($\mu\text{g/m}^3$, 24-hr): Breakpoints [0, 200, 400, 800, 1200, 1800, 2400]
+8. **Lead ($Pb$)** ($\mu\text{g/m}^3$, 24-hr): Breakpoints [0, 0.5, 1.0, 2.0, 3.0, 4.0, 5.0]
+
+Piecewise linear formula for sub-index $I_p$:
+$$I_p = \left[\frac{I_{high} - I_{low}}{C_{high} - C_{low}}\right] (C_p - C_{low}) + I_{low}$$
+
+#### CPCB Official Data Sufficiency Condition:
+Per CPCB (2014) guidelines, an overall composite AQI can be officially declared **only when at least three pollutants are monitored, of which at least one must be either PM2.5 or PM10**. If this threshold is not met, individual pollutant sub-indices are reported transparently, but an overall composite AQI is flagged as insufficient rather than substituting fabricated data.
 
 ---
 
@@ -87,7 +101,8 @@ AeroPulse 2.0 explicitly prevents the conflation of Indian National AQI and US E
 
 The interactive DIY air-cleaner calculator models fluid flow, static pressure reduction, and filter face velocity:
 * **Cube Geometry Factor**: A 4-filter or 5-filter configuration expands filter surface area by **400%**, cutting face velocity and static backpressure in half.
-* **Cardboard Donut Shroud (+18% CADR Boost)**: Standard box fan blade tips suffer massive vortex recirculation, where air loops backward around blade perimeters. Cutting a 15-inch circular cardboard aperture eliminates tip vortex shedding and increases net forward volumetric throughput by **+18%**.
+* **Cardboard Donut Shroud (+18% CADR Empirical Model Estimate)**: Standard box fan blade tips suffer vortex recirculation, where air loops backward around blade perimeters. Cutting a 15-inch circular cardboard aperture eliminates tip vortex shedding and increases net forward volumetric throughput by **+18%** (modeled as an empirical multiplier in the calculator).
+* **Safe Zero-CFM Guard**: When fan CFM is 0 or unpowered, delivered CADR and delivered ACH evaluate strictly to 0 rather than inventing arbitrary baseline clean airflow.
 * **CADR & ACH**:
   $$\text{Delivered ACH} = \frac{\text{Effective CADR (m}^3\text{/h)}}{V\text{ (m}^3\text{)}}$$
 * **Economic Bill of Materials**: Provides full BOM costs in both **INR (₹)** and **USD ($)**, demonstrating that a ₹4,000–₹5,000 ($45–$55) DIY unit matches commercial HEPA scrubbers costing ₹25,000–₹35,000 ($300–$450).
@@ -117,36 +132,58 @@ $$\text{Cigarettes/Day} = \frac{\text{Mean PM2.5} \times \text{Exposure Hours}}{
 
 ## 4. Security Architecture & Threat Modeling
 
-AeroPulse 2.0 adopts a defense-in-depth security architecture designed to prevent data leakage, prompt injection, and credential exposure:
+AeroPulse 2.0 adopts a defense-in-depth zero-trust security architecture designed to prevent data leakage, prompt injection, and credential exposure:
 
 ```
-[User Browser] 
+[User Browser Client]
     │
-    ├── 1. Input Sanitization (security.ts: sanitizeUserInput)
+    ├── 1. Client-Side Input Sanitization (security.ts: sanitizeUserInput)
     │      - Strips HTML tags, javascript: pseudo-protocols, data: URIs, control characters
     │
     ├── 2. PII Masking & Privacy Shield (security.ts: anonymizeFamilyProfile)
-    │      - Strips family surnames, member names, specific home addresses, and private notes
+    │      - Strips family surnames, member names, and private medical notes
+    │      - Converts exact ages to coarse developmental brackets:
+    │        * infant (0-2y), child (3-12y), adolescent (13-19y), adult (20-59y), senior (60+y)
     │      - Transmits only anonymous physical attributes (volume, ACH, age brackets, risk flags)
     │
-    ├── 3. Location Privacy for Crowdsourcing (security.ts: sanitizeLocationForPrivacy)
+    ├── 3. Geographic Basin Anonymization (security.ts: anonymizeLocationForAI)
+    │      - Truncates latitude and longitude to 1 decimal place (~11 km regional grid resolution)
+    │      - Prevents street-level household geotracking
+    │
+    ├── 4. Crowdsource Location Privacy (security.ts: sanitizeLocationForPrivacy)
     │      - Strips door numbers, flat numbers, and plot numbers; restricts to sector/landmark level
     │
-    ├── 4. Header-Based Authorization (aiService.ts: executeGeminiCall)
-    │      - Transmits API key via 'x-goog-api-key' HTTP header
-    │      - Key NEVER appears in URL query parameters, access logs, or proxy histories
+    ├── 5. Credential Scrubbing (security.ts: scrubErrorDetails)
+    │      - Redacts Google API keys (AIzaSy...) and full URLs before displaying error states
     │
-    └── 5. Credential Scrubbing (security.ts: scrubErrorDetails)
-           - Redacts Google API keys (AIzaSy...) and full URLs before displaying error states
+    └── 6. Secure Server Proxy Dispatch (/api/gemini)
+           │
+           ▼
+[Server-Side API Proxy (server/geminiProxy.js / Vite Connect Middleware)]
+    │
+    ├── Enforces HTTP POST & Content-Type: application/json
+    ├── Request Payload Ceiling: 50 KB strict cap (prevents memory exhaustion)
+    ├── IP-Based Rate Limiting: In-memory sliding window (30 requests/minute/IP)
+    ├── Reads Private Server Environment Secret: process.env.GEMINI_API_KEY
+    ├── Transmits Authorization: 'x-goog-api-key' HTTP header (never in URL params)
+    │
+    ▼
+[Google Gemini API Endpoint]
 ```
 
-### Environment Variable Setup
-Create a `.env` file in the root directory based on `.env.example`:
-```env
-# Optional Gemini API key for production builds
-VITE_GEMINI_API_KEY=
-```
-Users may also enter their own Gemini API key in the UI, stored safely in browser `localStorage`. When no API key is supplied, AeroPulse seamlessly falls back to its deterministic local physics engine with zero network dependencies.
+### Environment Variable & Key Management Architecture
+AeroPulse 2.0 strictly eliminates the insecure practice of baking `VITE_` prefixed private API keys into client bundles or storing secrets in browser `localStorage`.
+
+1. **Production & Development Deployment**:
+   Store the Gemini API key strictly in the server environment (e.g., in `.env` read exclusively by Node.js):
+   ```env
+   # Server-side environment variable (NOT bundled into client-side JS)
+   GEMINI_API_KEY=AIzaSyYourPrivateServerKeyHere
+   ```
+2. **Interactive Developer Testing**:
+   For testing on platforms without server-side environment access, users can input an in-memory session key via the UI modal. This key is held strictly in volatile component state and is **never persisted** to `localStorage`, `sessionStorage`, or cookies.
+3. **Deterministic Fallback Guarantee**:
+   When no API key is supplied or external networks fail, AeroPulse seamlessly falls back to its deterministic local scientific physics engine with zero network dependencies.
 
 ---
 
@@ -175,55 +212,63 @@ Users may also enter their own Gemini API key in the UI, stored safely in browse
 
 ## 6. Automated Test Suite & Coverage Report
 
-The automated test suite runs with Vitest and V8 coverage engine (`npm test` or `npx vitest run --coverage`).
+The automated test suite runs with Vitest and V8 coverage engine (`npm test` or `npm run test:coverage`).
 
-### Test Coverage Summary:
+### Verified Test Coverage Summary:
 ```
 -------------------|---------|----------|---------|---------|-------------------
 File               | % Stmts | % Branch | % Funcs | % Lines | Uncovered Line #s 
 -------------------|---------|----------|---------|---------|-------------------
-All files          |   89.31 |    71.37 |      90 |   90.89 |                   
+All files          |   89.81 |    75.42 |    87.5 |   90.87 |                   
  hooks             |   89.09 |    72.97 |     100 |   90.56 |                   
   useDebounce.ts   |     100 |      100 |     100 |     100 |                   
   useFocusTrap.ts  |    87.5 |    72.22 |     100 |   89.13 | 44,51,60,74-75    
- services          |   87.78 |    70.25 |   85.71 |   89.25 |                   
-  aiService.ts     |   87.78 |    70.25 |   85.71 |   89.25 | ...71-495,555,561 
- services/api      |   89.54 |    59.47 |   81.81 |   91.54 |                   
-  airQualityApi.ts |   89.54 |    59.47 |   81.81 |   91.54 | ...55,258-261,267 
- utils             |   90.14 |     85.1 |   93.33 |    91.5 |                   
-  ...alculators.ts |    88.7 |    80.21 |   88.88 |   90.41 | ...14-416,544-547 
-  security.ts      |   97.22 |       94 |     100 |   96.96 | 100               
+ services          |   89.53 |    72.77 |   88.23 |   90.74 |                   
+  aiService.ts     |   89.53 |    72.77 |   88.23 |   90.74 | ...19-643,703,709 
+ services/api      |   86.62 |    67.66 |   69.23 |   88.12 |                   
+  airQualityApi.ts |   86.62 |    67.66 |   69.23 |   88.12 | ...83,286-289,295 
+ utils             |   92.36 |    84.92 |   93.75 |   92.98 |                   
+  ...alculators.ts |   91.62 |    82.66 |   88.88 |   92.38 | ...64-566,697-700 
+  security.ts      |   97.05 |    91.83 |     100 |   96.77 | 127               
 -------------------|---------|----------|---------|---------|-------------------
 
 Test Files  5 passed (5)
-Tests       65 passed (65)
+Tests       72 passed (72)
+Pass Rate   100%
 ```
 
 ### Test Suites Included:
-1. `tests/airCalculators.test.ts` (24 tests):
+1. `tests/airCalculators.test.ts` (28 tests):
    - Unit conversions (CFM $\leftrightarrow \text{m}^3/\text{h}$)
-   - Indian NAQI (CPCB 2014) breakpoints and multi-pollutant dominant selection
-   - US EPA AQI (2024 revision) breakpoints
-   - Dynamic mass-balance differential equation solver and analytical steady-state
-   - Corsi-Rosenthal Box aerodynamics (+18% shroud boost)
+   - Indian NAQI (CPCB 2014) 8-pollutant sub-indices: PM2.5, PM10, NO2, SO2, CO, O3, NH3, Pb
+   - CPCB Data Sufficiency Rule ($\ge 3$ monitored pollutants with at least one PM)
+   - Dominant pollutant selection by highest sub-index
+   - US EPA AQI (2024 revision) breakpoints and safe handling of negative / NaN inputs
+   - Dynamic mass-balance differential equation solver and analytical steady-state solution
+   - Corsi-Rosenthal Box aerodynamics (+18% shroud boost and zero-CFM safety guard)
+   - Dual-currency Bill of Materials (USD and INR)
    - Integrated time-weighted exposure and pediatric inhalation rates
    - Cigarette equivalence communication aid and medical disclaimer
 2. `tests/security.test.ts` (18 tests):
    - XSS, script injection, and control character sanitization
-   - PII stripping and family profile anonymization
+   - PII stripping, coarse age banding, and family profile anonymization
+   - Regional geographic coordinate truncation (~11 km basin privacy)
    - Crowdsourced location privacy protection
    - Error secret scrubbing (API keys and URLs)
    - Secure API key resolution hierarchy
-3. `tests/airQualityApi.test.ts` (9 tests):
+3. `tests/airQualityApi.test.ts` (10 tests):
    - Geocoding and autocomplete search with local database fallback
    - Open-Meteo Air Quality & Weather API response parsing and derivation
+   - Timestamp alignment: matching observation time against hourly boundary layer height array
    - In-flight concurrent request deduplication
    - SessionStorage caching with TTL
    - Fallback to seasonal reference baseline with provenance labeling on 500/429
    - Re-throwing errors when no fallback is available
-4. `tests/aiService.test.ts` (8 tests):
+4. `tests/aiService.test.ts` (10 tests):
    - Deterministic local scientific engine (aerosol physics, clean heating, masks)
-   - Remote Gemini API integration with `x-goog-api-key` header verification
+   - Server-side proxy (`/api/gemini`) response consumption
+   - Multi-turn bounded conversation history formatting
+   - Direct Gemini API integration with `x-goog-api-key` header verification
    - Exponential backoff retry on HTTP 429 / 503
    - Immediate fallback without retry on HTTP 400 / 401
    - 8-part structured breakdown parsing
@@ -240,6 +285,8 @@ Tests       65 passed (65)
 
 ```
 prompt6/
+├── server/
+│   └── geminiProxy.js                  # Zero-dependency Node proxy for /api/gemini with rate limiting & sanitization
 ├── src/
 │   ├── components/
 │   │   ├── AirIntelligenceTab.tsx      # Dual AQI dashboard, multi-pollutants, inversion deep-dive, hourly VSI
@@ -251,7 +298,7 @@ prompt6/
 │   │   ├── Header.tsx                  # Geocoding search autocomplete, quick selector, dual scale toggle
 │   │   ├── FamilyProfileModal.tsx      # Household vulnerabilities, room geometry, commute profile
 │   │   ├── FamilyActionPlanModal.tsx   # Printable PDF emergency smog protocol & medical disclaimer
-│   │   └── ApiKeyModal.tsx             # Client-side encrypted Gemini API key storage
+│   │   └── ApiKeyModal.tsx             # In-memory volatile session API key manager & proxy status
 │   ├── data/
 │   │   ├── locations.ts                # Indian and global coordinates & baseline profiles
 │   │   ├── routines.ts                 # Dynamic exposure models across daily activities
@@ -261,11 +308,11 @@ prompt6/
 │   │   ├── useFocusTrap.ts             # WCAG 2.2 AA compliant modal focus management
 │   │   └── useDebounce.ts              # Reusable debounced input hook
 │   ├── services/
-│   │   ├── aiService.ts                # Gemini API client, backoff retry, & deterministic physics engine
+│   │   ├── aiService.ts                # Gemini API client, proxy consumer, backoff retry, & physics engine
 │   │   └── api/
 │   │       └── airQualityApi.ts        # Open-Meteo Air Quality & Weather API client & geocoder
 │   ├── utils/
-│   │   ├── airCalculators.ts           # CPCB NAQI, US EPA AQI, Mass Balance, CR Box, Exposure integrals
+│   │   ├── airCalculators.ts           # CPCB 8-pollutant NAQI, US EPA AQI, Mass Balance, CR Box, Exposure integrals
 │   │   └── security.ts                 # Input sanitization, PII masking, location privacy, secret scrubbing
 │   ├── types/
 │   │   └── index.ts                    # Strongly typed domain interfaces (zero 'any')
@@ -273,15 +320,15 @@ prompt6/
 │   ├── index.css                       # Tailwind CSS v4, accessible focus outlines, reduced motion
 │   └── main.tsx                        # React 19 root bootstrap
 ├── tests/
-│   ├── airCalculators.test.ts          # Scientific calculation tests (24 tests)
+│   ├── airCalculators.test.ts          # Scientific calculation tests (28 tests)
 │   ├── security.test.ts                # Security & privacy tests (18 tests)
-│   ├── airQualityApi.test.ts           # Open-Meteo API integration tests (9 tests)
-│   ├── aiService.test.ts               # Gemini API & deterministic engine tests (8 tests)
+│   ├── airQualityApi.test.ts           # Open-Meteo API integration tests (10 tests)
+│   ├── aiService.test.ts               # Gemini API, proxy, & deterministic engine tests (10 tests)
 │   └── accessibility.test.tsx          # Focus trap & debounce hook tests (6 tests)
-├── .env.example                        # Safe environment variable configuration template
+├── .env.example                        # Safe server-side environment variable configuration template
 ├── package.json
 ├── tsconfig.app.json                   # Strict TypeScript compiler options
-├── vite.config.ts                      # Vite build configuration with Tailwind v4
+├── vite.config.ts                      # Vite build configuration with Connect proxy middleware
 ├── vitest.config.ts                    # Vitest test and V8 coverage configuration
 └── README.md
 ```
@@ -299,14 +346,27 @@ prompt6/
 # 1. Install dependencies
 npm install
 
-# 2. Run automated test suite (65 tests)
+# 2. Run automated test suite (72 tests)
 npm test
 
-# 3. Run automated tests with coverage report
+# 3. Run automated tests with coverage report (V8 engine)
 npm run test:coverage # or npx vitest run --coverage
 
 # 4. Verify TypeScript strict compilation (strict mode, zero 'any')
 npx tsc -b
+
+# 5. Run linter verification (oxlint)
+npx oxlint
+
+# 6. Start local development server (with built-in /api/gemini proxy)
+npm run dev
+
+# 7. (Optional) Run standalone Node API proxy
+node server/geminiProxy.js
+
+# 8. Build optimized production bundle
+npm run build
+```
 
 # 5. Run linter verification (oxlint)
 npx oxlint

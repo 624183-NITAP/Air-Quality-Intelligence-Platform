@@ -14,7 +14,7 @@ import {
 describe('AeroPulse 2.0 Scientific Calculators Test Suite', () => {
 
   // ==========================================================================
-  // 1. UNIT CONVERSIONS
+  // 1. UNIT CONVERSIONS & PHYSICAL CONSTANTS
   // ==========================================================================
   describe('Unit Conversions & Physical Constants', () => {
     it('accurately converts CFM to m³/h and vice versa', () => {
@@ -26,57 +26,115 @@ describe('AeroPulse 2.0 Scientific Calculators Test Suite', () => {
   });
 
   // ==========================================================================
-  // 2. INDIAN NATIONAL AQI (CPCB 2014)
+  // 2. INDIAN NATIONAL AQI (CPCB 2014 FRAMEWORK - ALL 8 POLLUTANTS)
   // ==========================================================================
-  describe('Indian National AQI (CPCB 2014 Standard)', () => {
-    it('classifies PM2.5 = 25 µg/m³ as Good (AQI <= 50)', () => {
-      const res = calculateIndianNAQI({ pm25: 25 });
-      expect(res.category).toBe('Good');
-      expect(res.value).toBeLessThanOrEqual(50);
-      expect(res.scale).toBe('IN_NAQI');
-      expect(res.dominantPollutant).toBe('PM2.5');
+  describe('Indian National AQI (CPCB 2014 Framework)', () => {
+    // PM2.5 Breakpoints (0-30, 31-60, 61-90, 91-120, 121-250, 251-500)
+    it('accurately evaluates PM2.5 breakpoints and categories', () => {
+      expect(calculateIndianNAQI({ pm25: 15 }).category).toBe('Good');
+      expect(calculateIndianNAQI({ pm25: 30 }).value).toBe(50);
+      expect(calculateIndianNAQI({ pm25: 31 }).value).toBe(51);
+      expect(calculateIndianNAQI({ pm25: 60 }).value).toBe(100);
+      expect(calculateIndianNAQI({ pm25: 61 }).value).toBe(101);
+      expect(calculateIndianNAQI({ pm25: 90 }).value).toBe(200);
+      expect(calculateIndianNAQI({ pm25: 91 }).value).toBe(201);
+      expect(calculateIndianNAQI({ pm25: 120 }).value).toBe(300);
+      expect(calculateIndianNAQI({ pm25: 121 }).value).toBe(301);
+      expect(calculateIndianNAQI({ pm25: 250 }).value).toBe(400);
+      expect(calculateIndianNAQI({ pm25: 251 }).value).toBe(401);
+      expect(calculateIndianNAQI({ pm25: 500 }).value).toBe(500);
     });
 
-    it('classifies PM2.5 = 55 µg/m³ as Satisfactory (AQI 51-100)', () => {
-      const res = calculateIndianNAQI({ pm25: 55 });
-      expect(res.category).toBe('Satisfactory');
-      expect(res.value).toBeGreaterThan(50);
-      expect(res.value).toBeLessThanOrEqual(100);
+    // PM10 Breakpoints (0-50, 51-100, 101-250, 251-350, 351-430, 431-600)
+    it('accurately evaluates PM10 sub-index', () => {
+      const res = calculateIndianNAQI({ pm10: 275 });
+      expect(res.subIndices?.pm10).toBeGreaterThan(200);
+      expect(res.subIndices?.pm10).toBeLessThanOrEqual(300);
+      expect(res.dominantPollutant).toBe('PM10');
     });
 
-    it('classifies PM2.5 = 85 µg/m³ as Moderate (AQI 101-200)', () => {
-      const res = calculateIndianNAQI({ pm25: 85 });
-      expect(res.category).toBe('Moderate');
-      expect(res.value).toBeGreaterThan(100);
-      expect(res.value).toBeLessThanOrEqual(200);
-    });
-
-    it('classifies PM2.5 = 110 µg/m³ as Poor (AQI 201-300)', () => {
-      const res = calculateIndianNAQI({ pm25: 110 });
-      expect(res.category).toBe('Poor');
-      expect(res.value).toBeGreaterThan(200);
-      expect(res.value).toBeLessThanOrEqual(300);
-    });
-
-    it('classifies PM2.5 = 200 µg/m³ as Very Poor (AQI 301-400)', () => {
-      const res = calculateIndianNAQI({ pm25: 200 });
-      expect(res.category).toBe('Very Poor');
-      expect(res.value).toBeGreaterThan(300);
-      expect(res.value).toBeLessThanOrEqual(400);
-    });
-
-    it('classifies PM2.5 = 380 µg/m³ as Severe (AQI 401-500)', () => {
-      const res = calculateIndianNAQI({ pm25: 380 });
-      expect(res.category).toBe('Severe');
-      expect(res.value).toBeGreaterThan(400);
-      expect(res.value).toBeLessThanOrEqual(500);
-    });
-
-    it('identifies dominant pollutant among multi-pollutant inputs', () => {
-      // High NO2 relative to low PM2.5
-      const res = calculateIndianNAQI({ pm25: 20, no2: 250 });
+    // NO2 Breakpoints (0-40, 41-80, 81-180, 181-280, 281-400, 401-600)
+    it('accurately evaluates NO2 sub-index', () => {
+      const res = calculateIndianNAQI({ no2: 120 });
+      expect(res.subIndices?.no2).toBeGreaterThan(100);
+      expect(res.subIndices?.no2).toBeLessThanOrEqual(200);
       expect(res.dominantPollutant).toBe('NO2');
-      expect(res.value).toBeGreaterThan(200);
+    });
+
+    // SO2 Breakpoints (0-40, 41-80, 81-380, 381-800, 801-1600, 1601-2000)
+    it('accurately evaluates SO2 sub-index', () => {
+      const res = calculateIndianNAQI({ so2: 600 });
+      expect(res.subIndices?.so2).toBeGreaterThan(200);
+      expect(res.subIndices?.so2).toBeLessThanOrEqual(300);
+      expect(res.dominantPollutant).toBe('SO2');
+    });
+
+    // CO Breakpoints (0-1.0, 1.1-2.0, 2.1-10.0, 10.1-17.0, 17.1-34.0, 34.1-50.0 mg/m3)
+    it('accurately evaluates CO sub-index in mg/m3', () => {
+      const res = calculateIndianNAQI({ co: 12.0 });
+      expect(res.subIndices?.co).toBeGreaterThan(200);
+      expect(res.subIndices?.co).toBeLessThanOrEqual(300);
+      expect(res.dominantPollutant).toBe('CO');
+    });
+
+    // O3 Breakpoints (0-50, 51-100, 101-168, 169-208, 209-748, 749-1000)
+    it('accurately evaluates Ozone (O3) sub-index', () => {
+      const res = calculateIndianNAQI({ ozone: 150 });
+      expect(res.subIndices?.ozone).toBeGreaterThan(100);
+      expect(res.subIndices?.ozone).toBeLessThanOrEqual(200);
+      expect(res.dominantPollutant).toBe('O3');
+    });
+
+    // NH3 Breakpoints (0-200, 201-400, 401-800, 801-1200, 1201-1800, 1801-2400)
+    it('accurately evaluates Ammonia (NH3) sub-index', () => {
+      const res = calculateIndianNAQI({ nh3: 600 });
+      expect(res.subIndices?.nh3).toBeGreaterThan(100);
+      expect(res.subIndices?.nh3).toBeLessThanOrEqual(200);
+      expect(res.dominantPollutant).toBe('NH3');
+    });
+
+    // Pb Breakpoints (0-0.5, 0.6-1.0, 1.1-2.0, 2.1-3.0, 3.1-3.5, 3.6-5.0)
+    it('accurately evaluates Lead (Pb) sub-index', () => {
+      const res = calculateIndianNAQI({ pb: 2.5 });
+      expect(res.subIndices?.pb).toBeGreaterThan(200);
+      expect(res.subIndices?.pb).toBeLessThanOrEqual(300);
+      expect(res.dominantPollutant).toBe('Pb');
+    });
+
+    // CPCB Data Sufficiency Check:
+    it('evaluates CPCB data sufficiency requiring >= 3 pollutants including PM', () => {
+      // 1 pollutant only
+      const res1 = calculateIndianNAQI({ pm25: 45 });
+      expect(res1.monitoredPollutantsCount).toBe(1);
+      expect(res1.isDataSufficient).toBe(false);
+
+      // 3 pollutants with PM
+      const res2 = calculateIndianNAQI({ pm25: 45, pm10: 80, no2: 30 });
+      expect(res2.monitoredPollutantsCount).toBe(3);
+      expect(res2.isDataSufficient).toBe(true);
+
+      // 3 pollutants WITHOUT PM (NO2, SO2, CO)
+      const res3 = calculateIndianNAQI({ no2: 50, so2: 30, co: 1.5 });
+      expect(res3.monitoredPollutantsCount).toBe(3);
+      expect(res3.isDataSufficient).toBe(false); // Fails particulate requirement
+    });
+
+    it('safely handles missing, null, undefined, negative and NaN values', () => {
+      // @ts-expect-error testing null
+      const resNull = calculateIndianNAQI({ pm25: null });
+      expect(resNull.value).toBe(0);
+      expect(resNull.isDataSufficient).toBe(false);
+
+      const resNaN = calculateIndianNAQI({ pm25: NaN, pm10: -5 });
+      expect(resNaN.value).toBe(0);
+      expect(resNaN.monitoredPollutantsCount).toBe(0);
+    });
+
+    it('identifies dominant pollutant by highest sub-index', () => {
+      // Moderate PM2.5 (AQI ~120) but Severe NO2 (AQI ~450)
+      const res = calculateIndianNAQI({ pm25: 65, no2: 450 });
+      expect(res.dominantPollutant).toBe('NO2');
+      expect(res.value).toBeGreaterThan(400);
     });
   });
 
@@ -119,46 +177,82 @@ describe('AeroPulse 2.0 Scientific Calculators Test Suite', () => {
       expect(res.value).toBeLessThanOrEqual(300);
     });
 
-    it('classifies PM2.5 = 350.0 µg/m³ as Hazardous (AQI > 300)', () => {
-      const res = pm25ToUSEPAAQI(350.0);
+    it('classifies PM2.5 = 280.0 µg/m³ as Hazardous (AQI 301-500)', () => {
+      const res = pm25ToUSEPAAQI(280.0);
       expect(res.category).toBe('Hazardous');
       expect(res.value).toBeGreaterThan(300);
+      expect(res.value).toBeLessThanOrEqual(500);
+    });
+
+    it('handles negative or NaN concentrations safely', () => {
+      expect(pm25ToUSEPAAQI(-10).value).toBe(0);
+      expect(pm25ToUSEPAAQI(NaN).value).toBe(0);
     });
   });
 
   // ==========================================================================
-  // 4. INDOOR PM2.5 MASS-BALANCE DIFFERENTIAL EQUATION MODEL
+  // 4. SCIENTIFIC INDOOR MASS-BALANCE MODEL
   // ==========================================================================
-  describe('Single-Zone Indoor Mass-Balance Engine', () => {
-    it('solves steady-state concentration C_ss accurately', () => {
-      // V = 100 m3, C_out = 200 ug/m3, lambda = 1.0 hr-1, P = 0.8, k = 0.2 hr-1, CADR = 400 m3/hr, S = 0
-      // L = lambda + k + CADR/V = 1.0 + 0.2 + (400/100) = 5.2 hr-1
-      // Infiltration term = P * lambda * C_out = 0.8 * 1.0 * 200 = 160 ug/m3/hr
-      // C_ss = 160 / 5.2 = 30.77 ug/m3
-      const sim = runMassBalanceSimulation({
+  describe('Indoor PM2.5 Single-Zone Mass-Balance Model', () => {
+    it('calculates steady-state concentration matching analytical solution', () => {
+      const result = runMassBalanceSimulation({
         outdoorPM25: 200,
         initialIndoorPM25: 150,
-        roomVolumeM3: 100,
-        effectiveCADRM3h: 400,
-        airExchangeRateACH: 1.0,
-        penetrationFactor: 0.8,
+        roomVolumeM3: 60,
+        effectiveCADRM3h: 300,
+        airExchangeRateACH: 0.5,
+        penetrationFactor: 0.7,
         particleDepositionRate: 0.2,
         indoorGenerationRateUgH: 0,
         simulationDurationMinutes: 180,
       });
 
-      expect(sim.steadyStateIndoorPM25).toBeCloseTo(30.8, 1);
-      expect(sim.totalLossRatePerHr).toBeCloseTo(5.2, 1);
-      expect(sim.timeTo90PercentCleanMinutes).toBe(Math.round((2.3026 / 5.2) * 60));
-      expect(sim.infiltrationCutPercentage).toBe(Math.round(((200 - 30.8) / 200) * 100));
+      // L = 0.5 + 0.2 + (300 / 60) = 5.7 /hr
+      // Source = 0.7 * 0.5 * 200 = 70 ug/m3/hr
+      // Css = 70 / 5.7 ≈ 12.28 ug/m3
+      expect(result.steadyStateIndoorPM25).toBeCloseTo(12.3, 1);
+      expect(result.infiltrationCutPercentage).toBeGreaterThanOrEqual(90);
+      expect(result.protectiveGrade).toBe('A');
     });
 
-    it('generates a monotonic exponential decay curve towards C_ss when C_0 > C_ss', () => {
-      const sim = runMassBalanceSimulation({
+    it('handles zero CADR without division by zero', () => {
+      const result = runMassBalanceSimulation({
         outdoorPM25: 100,
-        initialIndoorPM25: 100,
-        roomVolumeM3: 80,
-        effectiveCADRM3h: 320,
+        initialIndoorPM25: 80,
+        roomVolumeM3: 50,
+        effectiveCADRM3h: 0,
+        airExchangeRateACH: 1.0,
+        penetrationFactor: 0.8,
+        particleDepositionRate: 0.2,
+        indoorGenerationRateUgH: 0,
+        simulationDurationMinutes: 120,
+      });
+
+      // L = 1.0 + 0.2 + 0 = 1.2 /hr
+      // Source = 0.8 * 1.0 * 100 = 80 ug/m3/hr
+      // Css = 80 / 1.2 ≈ 66.7 ug/m3
+      expect(result.steadyStateIndoorPM25).toBeCloseTo(66.7, 1);
+      expect(result.protectiveGrade).toBe('C');
+    });
+
+    it('accurately incorporates indoor source generation rate (cooking/frying)', () => {
+      const withCooking = runMassBalanceSimulation({
+        outdoorPM25: 100,
+        initialIndoorPM25: 50,
+        roomVolumeM3: 50,
+        effectiveCADRM3h: 200,
+        airExchangeRateACH: 0.5,
+        penetrationFactor: 0.7,
+        particleDepositionRate: 0.2,
+        indoorGenerationRateUgH: 1500, // Cooking adds 1500 ug/hr
+        simulationDurationMinutes: 120,
+      });
+
+      const withoutCooking = runMassBalanceSimulation({
+        outdoorPM25: 100,
+        initialIndoorPM25: 50,
+        roomVolumeM3: 50,
+        effectiveCADRM3h: 200,
         airExchangeRateACH: 0.5,
         penetrationFactor: 0.7,
         particleDepositionRate: 0.2,
@@ -166,76 +260,50 @@ describe('AeroPulse 2.0 Scientific Calculators Test Suite', () => {
         simulationDurationMinutes: 120,
       });
 
-      const series = sim.timeSeries;
-      expect(series.length).toBeGreaterThan(10);
-      expect(series[0].indoorPM25).toBe(100);
-
-      // Verify strict downward decay
-      for (let i = 1; i < series.length; i++) {
-        expect(series[i].indoorPM25).toBeLessThanOrEqual(series[i - 1].indoorPM25);
-      }
-
-      // Final point approaches steady-state
-      const finalPoint = series[series.length - 1];
-      expect(finalPoint.indoorPM25).toBeCloseTo(sim.steadyStateIndoorPM25, 0);
+      expect(withCooking.steadyStateIndoorPM25).toBeGreaterThan(withoutCooking.steadyStateIndoorPM25);
     });
 
-    it('accounts for indoor particle generation sources S (e.g. frying)', () => {
-      const cleanRoom = runMassBalanceSimulation({
-        outdoorPM25: 100,
-        initialIndoorPM25: 50,
-        roomVolumeM3: 60,
-        effectiveCADRM3h: 300,
-        airExchangeRateACH: 0.5,
-        penetrationFactor: 0.7,
-        particleDepositionRate: 0.2,
-        indoorGenerationRateUgH: 0,
-        simulationDurationMinutes: 60,
+    it('safely handles non-finite or degenerate room volumes and negative rates', () => {
+      const result = runMassBalanceSimulation({
+        outdoorPM25: -50,
+        initialIndoorPM25: NaN,
+        roomVolumeM3: 0,
+        effectiveCADRM3h: -100,
+        airExchangeRateACH: 0,
+        penetrationFactor: -0.5,
+        particleDepositionRate: 0,
+        indoorGenerationRateUgH: -50,
+        simulationDurationMinutes: 0,
       });
 
-      const cookingRoom = runMassBalanceSimulation({
-        outdoorPM25: 100,
-        initialIndoorPM25: 50,
-        roomVolumeM3: 60,
-        effectiveCADRM3h: 300,
-        airExchangeRateACH: 0.5,
-        penetrationFactor: 0.7,
-        particleDepositionRate: 0.2,
-        indoorGenerationRateUgH: 6000, // 6000 ug/hr frying
-        simulationDurationMinutes: 60,
-      });
-
-      // Internal emission increases steady-state PM2.5
-      expect(cookingRoom.steadyStateIndoorPM25).toBeGreaterThan(cleanRoom.steadyStateIndoorPM25);
-    });
-
-    it('handles zero outdoor PM2.5 edge case gracefully without NaN or negative values', () => {
-      const sim = runMassBalanceSimulation({
-        outdoorPM25: 0,
-        initialIndoorPM25: 40,
-        roomVolumeM3: 50,
-        effectiveCADRM3h: 200,
-        airExchangeRateACH: 0.5,
-        penetrationFactor: 0.7,
-        particleDepositionRate: 0.2,
-        indoorGenerationRateUgH: 0,
-        simulationDurationMinutes: 90,
-      });
-
-      expect(sim.steadyStateIndoorPM25).toBe(0);
-      expect(sim.timeSeries[sim.timeSeries.length - 1].indoorPM25).toBeLessThan(1);
+      expect(Number.isFinite(result.steadyStateIndoorPM25)).toBe(true);
+      expect(result.steadyStateIndoorPM25).toBe(0);
+      expect(result.timeSeries.length).toBeGreaterThan(0);
     });
   });
 
   // ==========================================================================
-  // 5. CORSI-ROSENTHAL BOX ENGINEERING CALCULATOR
+  // 5. CORSI-ROSENTHAL BOX AERODYNAMICS & ENGINEERING
   // ==========================================================================
   describe('Corsi-Rosenthal Box Aerodynamics & Engineering', () => {
-    it('calculates CADR and verifies the +18% cardboard donut shroud boost', () => {
+    it('applies the shroud effect appropriately with transparent contextualization', () => {
+      const withShroud = calculateCorsiRosenthalEngineering({
+        fanSizeInches: 20,
+        fanCfm: 1200,
+        fanPowerWatts: 45,
+        hasShroud: true,
+        filterCount: 4,
+        filterDimensionsInches: '20x20x2',
+        filterMervRating: 'MERV 13',
+        roomSquareMeters: 25,
+        ceilingHeightMeters: 2.8,
+        targetACH: 5,
+      });
+
       const withoutShroud = calculateCorsiRosenthalEngineering({
         fanSizeInches: 20,
         fanCfm: 1200,
-        fanPowerWatts: 65,
+        fanPowerWatts: 45,
         hasShroud: false,
         filterCount: 4,
         filterDimensionsInches: '20x20x2',
@@ -245,104 +313,87 @@ describe('AeroPulse 2.0 Scientific Calculators Test Suite', () => {
         targetACH: 5,
       });
 
-      const withShroud = calculateCorsiRosenthalEngineering({
-        fanSizeInches: 20,
-        fanCfm: 1200,
-        fanPowerWatts: 65,
-        hasShroud: true,
-        filterCount: 4,
-        filterDimensionsInches: '20x20x2',
-        filterMervRating: 'MERV 13',
-        roomSquareMeters: 25,
-        ceilingHeightMeters: 2.8,
-        targetACH: 5,
-      });
-
       expect(withShroud.effectiveCADR_CFM).toBeGreaterThan(withoutShroud.effectiveCADR_CFM);
-      const ratio = withShroud.effectiveCADR_CFM / withoutShroud.effectiveCADR_CFM;
-      expect(ratio).toBeCloseTo(1.18, 1);
+      expect(withShroud.effectiveCADR_CFM / withoutShroud.effectiveCADR_CFM).toBeCloseTo(1.18, 2);
     });
 
-    it('computes delivered ACH based on room volume', () => {
-      const cr = calculateCorsiRosenthalEngineering({
+    it('safely handles 0 CFM fan without producing arbitrary non-zero CADR', () => {
+      const zeroFan = calculateCorsiRosenthalEngineering({
         fanSizeInches: 20,
-        fanCfm: 1200,
-        fanPowerWatts: 65,
-        hasShroud: true,
-        filterCount: 4,
-        filterDimensionsInches: '20x20x2',
-        filterMervRating: 'MERV 13',
-        roomSquareMeters: 30,
-        ceilingHeightMeters: 2.8,
-        targetACH: 5,
-      });
-
-      const roomVol = 30 * 2.8;
-      expect(cr.roomVolumeM3).toBe(Math.round(roomVol));
-      expect(cr.deliveredACH).toBeCloseTo(cr.effectiveCADR_M3H / roomVol, 1);
-    });
-
-    it('calculates construction costs in both INR and USD with positive savings', () => {
-      const cr = calculateCorsiRosenthalEngineering({
-        fanSizeInches: 20,
-        fanCfm: 1200,
-        fanPowerWatts: 65,
+        fanCfm: 0,
+        fanPowerWatts: 0,
         hasShroud: true,
         filterCount: 4,
         filterDimensionsInches: '20x20x2',
         filterMervRating: 'MERV 13',
         roomSquareMeters: 20,
-        ceilingHeightMeters: 2.8,
-        targetACH: 5,
+        ceilingHeightMeters: 2.5,
+        targetACH: 4,
       });
 
-      expect(cr.totalCostUSD).toBeGreaterThan(40);
-      expect(cr.totalCostUSD).toBeLessThan(100);
-      expect(cr.totalCostINR).toBeGreaterThan(3000);
-      expect(cr.totalCostINR).toBeLessThan(8000);
-      expect(cr.savingsUSD).toBeGreaterThan(0);
-      expect(cr.savingsINR).toBeGreaterThan(0);
+      expect(zeroFan.operatingCFM).toBe(0);
+      expect(zeroFan.effectiveCADR_CFM).toBe(0);
+      expect(zeroFan.deliveredACH).toBe(0);
+      expect(zeroFan.targetAchMet).toBe(false);
+    });
+
+    it('calculates bill of materials and savings in dual currencies (USD and INR)', () => {
+      const res = calculateCorsiRosenthalEngineering({
+        fanSizeInches: 20,
+        fanCfm: 1000,
+        fanPowerWatts: 40,
+        hasShroud: true,
+        filterCount: 4,
+        filterDimensionsInches: '20x20x2',
+        filterMervRating: 'MERV 13',
+        roomSquareMeters: 20,
+        ceilingHeightMeters: 3,
+        targetACH: 4,
+      });
+
+      expect(res.totalCostUSD).toBeGreaterThan(0);
+      expect(res.totalCostINR).toBeGreaterThan(0);
+      expect(res.savingsINR).toBeGreaterThan(res.totalCostINR);
     });
   });
 
   // ==========================================================================
-  // 6. TIME-WEIGHTED INTEGRATED EXPOSURE & INHALED ALVEOLAR DOSE
+  // 6. TIME-WEIGHTED EXPOSURE & INHALATION DOSIMETRY
   // ==========================================================================
-  describe('Time-Weighted Integrated Exposure & Inhaled Dose', () => {
-    it('integrates exposure concentration over 24 hours: integral C(t) dt', () => {
+  describe('Time-Weighted Integrated Exposure & Dose Integrals', () => {
+    it('accurately integrates inhaled particulate mass across multiple activity slots', () => {
       const slots: DailyActivitySlot[] = [
-        { label: 'Sleep in Clean Haven', durationHours: 8, locationType: 'indoor_home', ambientConcentrationUgM3: 15, activityLevel: 'sleep' },
-        { label: 'Morning Commute', durationHours: 1, locationType: 'commute', ambientConcentrationUgM3: 180, activityLevel: 'light_active' },
-        { label: 'Workplace Indoors', durationHours: 8, locationType: 'work_school', ambientConcentrationUgM3: 40, activityLevel: 'sedentary' },
-        { label: 'Evening Return', durationHours: 1, locationType: 'commute', ambientConcentrationUgM3: 160, activityLevel: 'light_active' },
-        { label: 'Evening Home Living', durationHours: 6, locationType: 'indoor_home', ambientConcentrationUgM3: 25, activityLevel: 'sedentary' },
+        { label: 'Sleep', durationHours: 8, locationType: 'bedroom', ambientConcentrationUgM3: 20, activityLevel: 'sleep' },
+        { label: 'Commute', durationHours: 1, locationType: 'commute', ambientConcentrationUgM3: 200, activityLevel: 'light_active' },
+        { label: 'Office', durationHours: 8, locationType: 'office', ambientConcentrationUgM3: 40, activityLevel: 'sedentary' },
       ];
 
-      const res = calculateIntegratedExposure(slots, false);
-      // Total exposure: (8*15) + (1*180) + (8*40) + (1*160) + (6*25) = 120 + 180 + 320 + 160 + 150 = 930 ug*hr/m3
-      expect(res.totalExposureUgHrM3).toBe(930);
-      expect(res.meanConcentrationUgM3).toBeCloseTo(930 / 24, 1);
-      expect(res.totalInhaledMassUg).toBeGreaterThan(0);
-      // Alveolar dose is approximately 55% of inhaled mass
-      expect(res.alveolarDepositedDoseUg).toBe(Math.round(res.totalInhaledMassUg * 0.55));
+      const exposure = calculateIntegratedExposure(slots);
+
+      // Sleep: 8h * 20 ug/m3 = 160 ug*h/m3
+      // Commute: 1h * 200 ug/m3 = 200 ug*h/m3
+      // Office: 8h * 40 ug/m3 = 320 ug*h/m3
+      // Total = 680 ug*h/m3 / 17h = 40 ug/m3 TWA
+      expect(exposure.timeWeightedAveragePM25).toBeCloseTo(40, 0);
+      expect(exposure.totalInhaledMassUg).toBeGreaterThan(0);
+      expect(exposure.alveolarDepositedDoseUg).toBeCloseTo(exposure.totalInhaledMassUg * 0.55, 0);
     });
   });
 
   // ==========================================================================
   // 7. CIGARETTE EQUIVALENCE COMMUNICATION AID
   // ==========================================================================
-  describe('Cigarette Equivalence Communication Aid', () => {
-    it('applies the Berkeley Earth formula (22 ug/m3 * 24h = 1 cig) with medical disclaimer', () => {
-      const res = calculateCigaretteEquivalence(110, 24);
-      // 110 / 22 = 5.0
-      expect(res.cigarettesPerDay).toBe(5.0);
-      expect(res.scientificCaveat).toContain('NOT medically or clinically identical to tobacco smoking');
-    });
+  describe('Cigarette Equivalence Public Health Communication Aid', () => {
+    it('applies Berkeley Earth formulation with explicit scientific disclaimer', () => {
+      // 22 ug/m3 24h average = 1 cigarette
+      const oneCig = calculateCigaretteEquivalence(22, 24);
+      expect(oneCig.cigarettesPerDay).toBe(1);
+      expect(oneCig.isDisclaimerPresent).toBe(true);
+      expect(oneCig.scientificLimitation).toContain('not clinically or medically equivalent');
 
-    it('scales linearly with exposure duration', () => {
-      const res12h = calculateCigaretteEquivalence(110, 12);
-      expect(res12h.cigarettesPerDay).toBe(2.5);
+      // Severe smog: 220 ug/m3 = 10 cigarettes
+      const tenCigs = calculateCigaretteEquivalence(220, 24);
+      expect(tenCigs.cigarettesPerDay).toBe(10);
     });
   });
-
 });

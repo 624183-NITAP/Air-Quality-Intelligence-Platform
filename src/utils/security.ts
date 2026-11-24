@@ -28,8 +28,9 @@ export function sanitizeUserInput(input: string, maxLength = 1000): string {
 
 /**
  * Anonymizes family profile before transmitting context to external GenAI endpoints.
- * Strips personal names, specific addresses, and private notes.
- * Extracts only epidemiological and physiological categories needed for aerosol calculations.
+ * - Strips personal names, surnames, and private freeform notes.
+ * - Replaces exact numerical ages with coarse physiological age bands (Infant, Child, Adolescent, Adult, Senior).
+ * - Minimizes medical information to basic aerosol vulnerability categories (respiratory, cardiac, prenatal).
  */
 export function anonymizeFamilyProfile(profile: FamilyProfile): {
   householdSummary: string;
@@ -45,12 +46,18 @@ export function anonymizeFamilyProfile(profile: FamilyProfile): {
       : 85);
 
   const anonymizedMembers = profile.members.map((m, idx) => {
-    const ageGroup = m.age < 2 ? 'infant' : m.age < 13 ? 'child' : m.age >= 60 ? 'senior' : 'adult';
+    const ageBand = m.age < 2 ? 'infant (0-2y)' 
+      : m.age < 13 ? 'child (3-12y)' 
+      : m.age < 20 ? 'adolescent (13-19y)' 
+      : m.age >= 60 ? 'senior (60+y)' 
+      : 'adult (20-59y)';
+
     const condition = m.type === 'asthma_copd' ? 'respiratory sensitivity (asthma/COPD)'
       : m.type === 'cardiac' ? 'cardiovascular sensitivity'
       : m.type === 'pregnant' ? 'pregnant'
       : 'standard baseline';
-    return `Person #${idx + 1}: ${ageGroup} (age ${m.age}), condition: ${condition}`;
+
+    return `Person #${idx + 1}: ${ageBand}, condition: ${condition}`;
   }).join('; ');
 
   return {
@@ -60,6 +67,25 @@ export function anonymizeFamilyProfile(profile: FamilyProfile): {
     cookingFuel: profile.housing.cookingFuel,
     commuteMode: profile.commute.primaryMode,
     airPurifierCADR: profile.airPurifierCADR || 300,
+  };
+}
+
+/**
+ * Anonymizes geographic coordinates before sending to AI providers.
+ * Truncates latitude and longitude to 1 decimal place (~11 km regional box),
+ * stripping precise residential micro-locations while preserving regional air basin context.
+ */
+export function anonymizeLocationForAI(location: { city: string; country: string; latitude: number; longitude: number }): {
+  city: string;
+  country: string;
+  approxLatitude: number;
+  approxLongitude: number;
+} {
+  return {
+    city: sanitizeUserInput(location.city, 50),
+    country: sanitizeUserInput(location.country, 50),
+    approxLatitude: +location.latitude.toFixed(1),
+    approxLongitude: +location.longitude.toFixed(1),
   };
 }
 
@@ -111,19 +137,13 @@ export function scrubErrorDetails(error: unknown): string {
 }
 
 /**
- * Resolves the Gemini API Key securely.
- * Checks for user-provided key, then falls back to VITE_GEMINI_API_KEY from environment.
+ * Resolves optional developer-session Gemini API key.
+ * In production architectures, credentials are held strictly server-side (GEMINI_API_KEY).
  * Validates key format before returning.
  */
 export function resolveGeminiApiKey(userKey?: string): string {
-  if (userKey && userKey.trim().length > 10) {
+  if (userKey && typeof userKey === 'string' && userKey.trim().length > 10) {
     return userKey.trim();
   }
-
-  const envKey = import.meta.env.VITE_GEMINI_API_KEY;
-  if (typeof envKey === 'string' && envKey.trim().length > 10) {
-    return envKey.trim();
-  }
-
   return '';
 }

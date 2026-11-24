@@ -41,6 +41,7 @@ interface CPCBBreakpoint {
   iHigh: number;
 }
 
+// CPCB 2014 National Air Quality Index (NAQI) official breakpoint tables
 const CPCB_PM25_BREAKPOINTS: CPCBBreakpoint[] = [
   { cLow: 0, cHigh: 30, iLow: 0, iHigh: 50 },
   { cLow: 31, cHigh: 60, iLow: 51, iHigh: 100 },
@@ -68,50 +69,151 @@ const CPCB_NO2_BREAKPOINTS: CPCBBreakpoint[] = [
   { cLow: 401, cHigh: 600, iLow: 401, iHigh: 500 },
 ];
 
-function interpolateSubIndex(conc: number, breakpoints: CPCBBreakpoint[]): number {
-  if (conc < 0) return 0;
+const CPCB_SO2_BREAKPOINTS: CPCBBreakpoint[] = [
+  { cLow: 0, cHigh: 40, iLow: 0, iHigh: 50 },
+  { cLow: 41, cHigh: 80, iLow: 51, iHigh: 100 },
+  { cLow: 81, cHigh: 380, iLow: 101, iHigh: 200 },
+  { cLow: 381, cHigh: 800, iLow: 201, iHigh: 300 },
+  { cLow: 801, cHigh: 1600, iLow: 301, iHigh: 400 },
+  { cLow: 1601, cHigh: 2000, iLow: 401, iHigh: 500 },
+];
+
+// CO breakpoints in mg/m3 (CPCB 8-hr standard)
+const CPCB_CO_BREAKPOINTS: CPCBBreakpoint[] = [
+  { cLow: 0.0, cHigh: 1.0, iLow: 0, iHigh: 50 },
+  { cLow: 1.1, cHigh: 2.0, iLow: 51, iHigh: 100 },
+  { cLow: 2.1, cHigh: 10.0, iLow: 101, iHigh: 200 },
+  { cLow: 10.1, cHigh: 17.0, iLow: 201, iHigh: 300 },
+  { cLow: 17.1, cHigh: 34.0, iLow: 301, iHigh: 400 },
+  { cLow: 34.1, cHigh: 50.0, iLow: 401, iHigh: 500 },
+];
+
+// Ozone breakpoints in ug/m3 (CPCB 8-hr standard)
+const CPCB_O3_BREAKPOINTS: CPCBBreakpoint[] = [
+  { cLow: 0, cHigh: 50, iLow: 0, iHigh: 50 },
+  { cLow: 51, cHigh: 100, iLow: 51, iHigh: 100 },
+  { cLow: 101, cHigh: 168, iLow: 101, iHigh: 200 },
+  { cLow: 169, cHigh: 208, iLow: 201, iHigh: 300 },
+  { cLow: 209, cHigh: 748, iLow: 301, iHigh: 400 },
+  { cLow: 749, cHigh: 1000, iLow: 401, iHigh: 500 },
+];
+
+// Ammonia (NH3) breakpoints in ug/m3 (CPCB 24-hr standard)
+const CPCB_NH3_BREAKPOINTS: CPCBBreakpoint[] = [
+  { cLow: 0, cHigh: 200, iLow: 0, iHigh: 50 },
+  { cLow: 201, cHigh: 400, iLow: 51, iHigh: 100 },
+  { cLow: 401, cHigh: 800, iLow: 101, iHigh: 200 },
+  { cLow: 801, cHigh: 1200, iLow: 201, iHigh: 300 },
+  { cLow: 1201, cHigh: 1800, iLow: 301, iHigh: 400 },
+  { cLow: 1801, cHigh: 2400, iLow: 401, iHigh: 500 },
+];
+
+// Lead (Pb) breakpoints in ug/m3 (CPCB 24-hr standard)
+const CPCB_PB_BREAKPOINTS: CPCBBreakpoint[] = [
+  { cLow: 0.0, cHigh: 0.5, iLow: 0, iHigh: 50 },
+  { cLow: 0.6, cHigh: 1.0, iLow: 51, iHigh: 100 },
+  { cLow: 1.1, cHigh: 2.0, iLow: 101, iHigh: 200 },
+  { cLow: 2.1, cHigh: 3.0, iLow: 201, iHigh: 300 },
+  { cLow: 3.1, cHigh: 3.5, iLow: 301, iHigh: 400 },
+  { cLow: 3.6, cHigh: 5.0, iLow: 401, iHigh: 500 },
+];
+
+function interpolateSubIndex(conc: number | undefined | null, breakpoints: CPCBBreakpoint[]): number | undefined {
+  if (conc === undefined || conc === null || !Number.isFinite(conc) || conc < 0) {
+    return undefined;
+  }
   for (const bp of breakpoints) {
     if (conc <= bp.cHigh) {
       const idx = ((bp.iHigh - bp.iLow) / (bp.cHigh - bp.cLow)) * (conc - bp.cLow) + bp.iLow;
-      return Math.round(idx);
+      return Math.min(500, Math.max(0, Math.round(idx)));
     }
   }
   return 500;
 }
 
 export function calculateIndianNAQI(pollutants: {
-  pm25: number;
+  pm25?: number;
   pm10?: number;
   no2?: number;
   so2?: number;
   co?: number;
+  ozone?: number;
+  nh3?: number;
+  pb?: number;
 }): AQIResult {
   const pm25Sub = interpolateSubIndex(pollutants.pm25, CPCB_PM25_BREAKPOINTS);
-  const pm10Sub = pollutants.pm10 ? interpolateSubIndex(pollutants.pm10, CPCB_PM10_BREAKPOINTS) : 0;
-  const no2Sub = pollutants.no2 ? interpolateSubIndex(pollutants.no2, CPCB_NO2_BREAKPOINTS) : 0;
+  const pm10Sub = interpolateSubIndex(pollutants.pm10, CPCB_PM10_BREAKPOINTS);
+  const no2Sub = interpolateSubIndex(pollutants.no2, CPCB_NO2_BREAKPOINTS);
+  const so2Sub = interpolateSubIndex(pollutants.so2, CPCB_SO2_BREAKPOINTS);
+  const coSub = interpolateSubIndex(pollutants.co, CPCB_CO_BREAKPOINTS);
+  const o3Sub = interpolateSubIndex(pollutants.ozone, CPCB_O3_BREAKPOINTS);
+  const nh3Sub = interpolateSubIndex(pollutants.nh3, CPCB_NH3_BREAKPOINTS);
+  const pbSub = interpolateSubIndex(pollutants.pb, CPCB_PB_BREAKPOINTS);
 
-  let maxAQI = pm25Sub;
-  let dominant: AQIResult['dominantPollutant'] = 'PM2.5';
+  const subMap: Array<{ pollutant: AQIResult['dominantPollutant']; subIndex: number }> = [];
+  if (pm25Sub !== undefined) subMap.push({ pollutant: 'PM2.5', subIndex: pm25Sub });
+  if (pm10Sub !== undefined) subMap.push({ pollutant: 'PM10', subIndex: pm10Sub });
+  if (no2Sub !== undefined) subMap.push({ pollutant: 'NO2', subIndex: no2Sub });
+  if (so2Sub !== undefined) subMap.push({ pollutant: 'SO2', subIndex: so2Sub });
+  if (coSub !== undefined) subMap.push({ pollutant: 'CO', subIndex: coSub });
+  if (o3Sub !== undefined) subMap.push({ pollutant: 'O3', subIndex: o3Sub });
+  if (nh3Sub !== undefined) subMap.push({ pollutant: 'NH3', subIndex: nh3Sub });
+  if (pbSub !== undefined) subMap.push({ pollutant: 'Pb', subIndex: pbSub });
 
-  if (pm10Sub > maxAQI) {
-    maxAQI = pm10Sub;
-    dominant = 'PM10';
+  // Official CPCB Data Sufficiency Requirement:
+  // Minimum 3 monitored pollutants with valid sub-indices, of which at least one must be PM2.5 or PM10.
+  const hasParticulate = pm25Sub !== undefined || pm10Sub !== undefined;
+  const isDataSufficient = subMap.length >= 3 && hasParticulate;
+  const dataSufficiencyNote = isDataSufficient
+    ? 'Official CPCB NAQI criteria satisfied (>= 3 pollutants monitored with particulate fraction).'
+    : (subMap.length === 0
+        ? 'No valid pollutant measurements provided.'
+        : `CPCB criteria require >= 3 pollutants including PM2.5 or PM10 (Monitored: ${subMap.length}, Particulate: ${hasParticulate ? 'Yes' : 'No'}). Showing highest available sub-index.`);
+
+  if (subMap.length === 0) {
+    return {
+      value: 0,
+      scale: 'IN_NAQI',
+      category: 'Good',
+      dominantPollutant: 'PM2.5',
+      colorToken: getIndianNAQICategory(0).colorToken,
+      healthAdvisory: 'Insufficient pollutant measurements to calculate air quality sub-indices.',
+      monitoredPollutantsCount: 0,
+      isDataSufficient: false,
+      dataSufficiencyNote,
+    };
   }
-  if (no2Sub > maxAQI) {
-    maxAQI = no2Sub;
-    dominant = 'NO2';
+
+  let dominant = subMap[0];
+  for (let i = 1; i < subMap.length; i++) {
+    if (subMap[i].subIndex > dominant.subIndex) {
+      dominant = subMap[i];
+    }
   }
 
-  const clamped = Math.min(500, Math.max(0, maxAQI));
+  const clamped = Math.min(500, Math.max(0, dominant.subIndex));
   const categoryInfo = getIndianNAQICategory(clamped);
 
   return {
     value: clamped,
     scale: 'IN_NAQI',
     category: categoryInfo.category,
-    dominantPollutant: dominant,
+    dominantPollutant: dominant.pollutant,
     colorToken: categoryInfo.colorToken,
     healthAdvisory: categoryInfo.healthAdvisory,
+    subIndices: {
+      pm25: pm25Sub,
+      pm10: pm10Sub,
+      no2: no2Sub,
+      so2: so2Sub,
+      co: coSub,
+      ozone: o3Sub,
+      nh3: nh3Sub,
+      pb: pbSub,
+    },
+    monitoredPollutantsCount: subMap.length,
+    isDataSufficient,
+    dataSufficiencyNote,
   };
 }
 
@@ -196,7 +298,24 @@ export function getIndianNAQICategory(aqi: number) {
 // ============================================================================
 
 export function pm25ToUSEPAAQI(pm25: number): AQIResult {
-  const c = Math.max(0, pm25);
+  if (typeof pm25 !== 'number' || isNaN(pm25) || !isFinite(pm25) || pm25 <= 0) {
+    return {
+      value: 0,
+      scale: 'US_EPA',
+      category: 'Good',
+      dominantPollutant: 'PM2.5',
+      colorToken: {
+        bg: 'bg-emerald-500/15',
+        text: 'text-emerald-400',
+        border: 'border-emerald-500/30',
+        badgeBg: 'bg-emerald-950',
+        badgeText: 'text-emerald-300',
+      },
+      healthAdvisory: 'Air quality is satisfactory and poses little or no risk.',
+    };
+  }
+
+  const c = pm25;
   let aqi = 0;
 
   if (c <= 9.0) {
@@ -315,19 +434,24 @@ export function runMassBalanceSimulation(params: MassBalanceSimulationParams): M
     simulationDurationMinutes,
   } = params;
 
-  const V = Math.max(5, roomVolumeM3);
-  const lambda = Math.max(0.05, airExchangeRateACH);
-  const P = Math.min(1.0, Math.max(0.1, penetrationFactor));
-  const k = Math.max(0.05, particleDepositionRate);
-  const CADR = Math.max(0, effectiveCADRM3h);
+  // Strict physical bounds and resilience against NaN / Infinity
+  const V = Math.max(5, Number.isFinite(roomVolumeM3) ? roomVolumeM3 : 50);
+  const lambda = Math.max(0.05, Number.isFinite(airExchangeRateACH) ? airExchangeRateACH : 0.5);
+  const P = Math.min(1.0, Math.max(0.0, Number.isFinite(penetrationFactor) ? penetrationFactor : 0.7));
+  const k = Math.max(0.05, Number.isFinite(particleDepositionRate) ? particleDepositionRate : 0.25);
+  const CADR = Math.max(0, Number.isFinite(effectiveCADRM3h) ? effectiveCADRM3h : 0);
+  const cOut = Math.max(0, Number.isFinite(outdoorPM25) ? outdoorPM25 : 0);
+  const c0 = Math.max(0, Number.isFinite(initialIndoorPM25) ? initialIndoorPM25 : 0);
+  const sGen = Math.max(0, Number.isFinite(indoorGenerationRateUgH) ? indoorGenerationRateUgH : 0);
+  const duration = Math.max(10, Number.isFinite(simulationDurationMinutes) ? simulationDurationMinutes : 180);
 
   // Total removal loss rate L (1/hr)
   const filtrationRateACH = CADR / V;
   const totalLossRatePerHr = lambda + k + filtrationRateACH;
 
   // Source terms (ug/m3/hr)
-  const infiltrationTerm = P * lambda * outdoorPM25;
-  const internalEmissionTerm = indoorGenerationRateUgH / V;
+  const infiltrationTerm = P * lambda * cOut;
+  const internalEmissionTerm = sGen / V;
   const totalSourceTerm = infiltrationTerm + internalEmissionTerm;
 
   // Steady-state concentration (ug/m3)
@@ -338,25 +462,25 @@ export function runMassBalanceSimulation(params: MassBalanceSimulationParams): M
   const timeTo90PercentCleanMinutes = Math.round((2.3026 / totalLossRatePerHr) * 60);
 
   // Infiltration reduction compared to raw outdoor concentration
-  const infiltrationCutPercentage = outdoorPM25 > 0
-    ? Math.round(Math.max(0, ((outdoorPM25 - steadyRounded) / outdoorPM25) * 100))
+  const infiltrationCutPercentage = cOut > 0
+    ? Math.round(Math.max(0, ((cOut - steadyRounded) / cOut) * 100))
     : 0;
 
   // Dynamic time series generation
-  const stepMinutes = Math.max(2, Math.round(simulationDurationMinutes / 30));
+  const stepMinutes = Math.max(2, Math.round(duration / 30));
   const timeSeries: DynamicSimulationPoint[] = [];
 
-  for (let tMin = 0; tMin <= simulationDurationMinutes; tMin += stepMinutes) {
+  for (let tMin = 0; tMin <= duration; tMin += stepMinutes) {
     const tHr = tMin / 60;
     // C(t) = C_ss + (C_0 - C_ss) * exp(-L * t)
-    const cAtT = steadyRounded + (initialIndoorPM25 - steadyRounded) * Math.exp(-totalLossRatePerHr * tHr);
+    const cAtT = steadyRounded + (c0 - steadyRounded) * Math.exp(-totalLossRatePerHr * tHr);
     const clampedC = Math.max(0, +cAtT.toFixed(1));
     const aqiVal = pm25ToUSEPAAQI(clampedC).value;
 
     timeSeries.push({
       timeMinutes: tMin,
       indoorPM25: clampedC,
-      outdoorPM25,
+      outdoorPM25: cOut,
       indoorAQI: aqiVal,
       phaseLabel: tMin === 0 ? 'Start' : (tMin === timeTo90PercentCleanMinutes ? '90% Steady State' : undefined),
     });
@@ -394,8 +518,38 @@ export function runMassBalanceSimulation(params: MassBalanceSimulationParams): M
 // ============================================================================
 
 export function calculateCorsiRosenthalEngineering(config: CorsiRosenthalBoxConfig) {
-  // Nominal free-air fan CFM (e.g. 20" box fan on medium ~1200 CFM, high ~1800 CFM)
-  const freeCfm = Math.max(300, config.fanCfm);
+  const roomVolumeM3 = Math.max(5, (config.roomSquareMeters || 20) * (config.ceilingHeightMeters || 2.8));
+
+  // If fan CFM is 0 or invalid, output 0 cleanly without asserting arbitrary baseline
+  if (!config.fanCfm || config.fanCfm <= 0 || !Number.isFinite(config.fanCfm)) {
+    return {
+      operatingCFM: 0,
+      effectiveCADR_CFM: 0,
+      effectiveCADR_M3H: 0,
+      deliveredACH: 0,
+      targetAchMet: false,
+      roomVolumeM3: Math.round(roomVolumeM3),
+      totalCostUSD: 0,
+      totalCostINR: 0,
+      commercialHepaPriceUSD: 0,
+      commercialHepaPriceINR: 0,
+      savingsUSD: 0,
+      savingsINR: 0,
+      isModelEstimate: true,
+      shroudEffect: {
+        hasShroud: config.hasShroud,
+        shroudMultiplier: 1.0,
+        contextNote: 'Fan airflow is zero; no dynamic air movement.'
+      },
+      assumptions: [
+        'Fan speed is 0 CFM; clean air delivery and delivered ACH are 0.',
+        'Install and power an operational box fan to initiate air filtration.'
+      ],
+    };
+  }
+
+  // Nominal free-air fan CFM
+  const freeCfm = config.fanCfm;
 
   // Single-pass fractional collection efficiency for submicron PM2.5:
   let singlePassEfficiency = 0.85; // MERV 13 default: ~85% on 0.3-1um, >90% on PM2.5
@@ -421,7 +575,7 @@ export function calculateCorsiRosenthalEngineering(config: CorsiRosenthalBoxConf
   // 5-filter tower (with elevated bottom filter) adds further area.
   const filterCountFactor = config.filterCount === 5 ? 0.58 : (config.filterCount === 4 ? 0.52 : 0.28);
   
-  // Donut shroud effect: prevents air recirculation backflow through blade tips, improving net forward throughput by +18%
+  // Donut shroud effect: prevents air recirculation backflow through blade tips, estimated ~15-20% boost in empirical tests
   const shroudMultiplier = config.hasShroud ? 1.18 : 1.0;
 
   // Realized system operating CFM
@@ -430,8 +584,7 @@ export function calculateCorsiRosenthalEngineering(config: CorsiRosenthalBoxConf
   const effectiveCADR_M3H = Math.round(effectiveCADR_CFM * CFM_TO_M3H);
 
   // Room ACH deliverable
-  const roomVolumeM3 = config.roomSquareMeters * config.ceilingHeightMeters;
-  const deliveredACH = +(effectiveCADR_M3H / Math.max(10, roomVolumeM3)).toFixed(1);
+  const deliveredACH = +(effectiveCADR_M3H / roomVolumeM3).toFixed(1);
   const targetAchMet = deliveredACH >= config.targetACH;
 
   // Approximate construction bill of materials
@@ -515,6 +668,7 @@ export function calculateIntegratedExposure(slots: DailyActivitySlot[], isChild 
   return {
     totalExposureUgHrM3: Math.round(totalExposureUgHrM3),
     meanConcentrationUgM3,
+    timeWeightedAveragePM25: meanConcentrationUgM3,
     totalInhaledMassUg: totalInhaledMassRounded,
     alveolarDepositedDoseUg,
   };
@@ -525,14 +679,17 @@ export function calculateIntegratedExposure(slots: DailyActivitySlot[], isChild 
 // ============================================================================
 
 export function calculateCigaretteEquivalence(pm25UgM3: number, exposureHours = 24) {
-  const normalized24hDose = (pm25UgM3 * exposureHours) / 24;
+  const normalized24hDose = (Math.max(0, pm25UgM3) * Math.max(0, exposureHours)) / 24;
   // Berkeley Earth empirical communication formula: 1 cigarette equivalent ≈ 22 ug/m3 PM2.5 over 24h
   const cigarettes = +(normalized24hDose / 22).toFixed(1);
+  const limitation = 'The Berkeley Earth conversion is an educational public communication aid based on ambient particulate mass loading. It is not clinically or medically equivalent to tobacco smoking, which delivers direct concentrated chemical toxins, nicotine, volatile nitrosamines, and carcinogens.';
 
   return {
     cigarettesPerDay: cigarettes,
+    isDisclaimerPresent: true,
+    scientificLimitation: limitation,
+    scientificCaveat: limitation,
     formula: 'Equivalent = (Mean PM2.5 × ExposureHours / 24) / 22 μg/m³',
-    scientificCaveat: 'The Berkeley Earth conversion is an educational public communication aid based on ambient particulate mass loading. It is NOT medically or clinically identical to tobacco smoking, which delivers direct concentrated chemical toxins, nicotine, volatile nitrosamines, and carcinogens.',
   };
 }
 

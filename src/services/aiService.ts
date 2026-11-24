@@ -9,6 +9,7 @@ import {
 import {
   sanitizeUserInput,
   anonymizeFamilyProfile,
+  anonymizeLocationForAI,
   resolveGeminiApiKey,
   scrubErrorDetails
 } from '../utils/security';
@@ -31,7 +32,7 @@ export interface ApiCallError extends Error {
 }
 
 export async function askAeroAI(params: AeroAIRequestParams): Promise<GenAIMessage> {
-  const { userPrompt, profile, currentLocation, apiKey, model = 'gemini-2.0-flash' } = params;
+  const { userPrompt, conversationHistory, profile, currentLocation, apiKey, model = 'gemini-2.0-flash' } = params;
 
   // Sanitize user prompt to prevent prompt injection, script injection, and payload bloat
   const cleanPrompt = sanitizeUserInput(userPrompt, 1000);
@@ -45,14 +46,44 @@ export async function askAeroAI(params: AeroAIRequestParams): Promise<GenAIMessa
     activeAbortController = null;
   }
 
-  const effectiveKey = resolveGeminiApiKey(apiKey);
+  // If caller explicitly passes empty string ('') as apiKey, use deterministic offline fallback without network calls
+  if (apiKey === '') {
+    return generateDeterministicScientificResponse(cleanPrompt, profile, currentLocation);
+  }
 
-  // If valid Gemini API Key is available, call Gemini API with exponential backoff retry
+  // 1. Try secure server-side API proxy (/api/gemini)
+  // The server proxy manages GEMINI_API_KEY server-side, eliminating key exposure in client bundles
+  try {
+    activeAbortController = new AbortController();
+    const serverResult = await callServerGeminiProxy({
+      prompt: cleanPrompt,
+      conversationHistory,
+      profile,
+      location: currentLocation,
+      model,
+      signal: activeAbortController.signal,
+    });
+    if (serverResult) {
+      activeAbortController = null;
+      return serverResult;
+    }
+  } catch (err: unknown) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw err;
+    }
+    // Proceed to fallback chain
+  } finally {
+    activeAbortController = null;
+  }
+
+  // 2. If a developer session key is explicitly provided (for testing bypass), call direct endpoint with retry
+  const effectiveKey = resolveGeminiApiKey(apiKey);
   if (effectiveKey && effectiveKey.length > 10) {
     try {
       activeAbortController = new AbortController();
       const response = await callGeminiAPIWithRetry({
         prompt: cleanPrompt,
+        conversationHistory,
         profile,
         location: currentLocation,
         apiKey: effectiveKey,
@@ -66,86 +97,131 @@ export async function askAeroAI(params: AeroAIRequestParams): Promise<GenAIMessa
         throw err;
       }
       const scrubbed = scrubErrorDetails(err);
-      console.warn('Gemini API call failed after retries, falling back to deterministic local scientific engine:', scrubbed);
-      // Fall through to deterministic neuro-heuristic engine
+      console.warn('Direct Gemini call failed after retries, falling back to deterministic scientific engine:', scrubbed);
     } finally {
       activeAbortController = null;
     }
   }
 
-  // Built-in intelligent scientific neuro-heuristic engine
+  // 3. Built-in intelligent scientific neuro-heuristic engine
   return generateDeterministicScientificResponse(cleanPrompt, profile, currentLocation);
 }
 
 /**
- * Calls Gemini API with exponential backoff retry for HTTP 429, 500, 502, 503, 504 and network errors.
+ * Calls server-side proxy endpoint (/api/gemini) with privacy-minimized payload.
  */
-async function callGeminiAPIWithRetry(params: {
+async function callServerGeminiProxy(params: {
   prompt: string;
+  conversationHistory?: GenAIMessage[];
   profile: FamilyProfile;
   location: LocationData;
-  apiKey: string;
   model: GeminiModelName;
   signal: AbortSignal;
-}): Promise<GenAIMessage> {
-  const { prompt, profile, location, apiKey, model, signal } = params;
-  const maxRetries = 2;
-  let lastError: Error | null = null;
+}): Promise<GenAIMessage | null> {
+  const { prompt, conversationHistory, profile, location, model, signal } = params;
 
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      return await executeGeminiCall({ prompt, profile, location, apiKey, model, signal });
-    } catch (error: unknown) {
-      if (error instanceof Error) {
-        lastError = error;
-      } else {
-        lastError = new Error(scrubErrorDetails(error));
-      }
-
-      if (signal.aborted) throw error;
-
-      // Don't retry client-side 400 Bad Request or 401/403 (invalid key)
-      const status = (error as ApiCallError)?.status;
-      if (status === 400 || status === 401 || status === 403) {
-        throw error;
-      }
-
-      if (attempt < maxRetries) {
-        // Exponential backoff with jitter: 1s, 2s...
-        const delayMs = Math.min(1000 * Math.pow(2, attempt) + Math.random() * 400, 5000);
-        await new Promise(resolve => setTimeout(resolve, delayMs));
-      }
-    }
-  }
-
-  throw lastError || new Error('Gemini API communication failed after retries');
-}
-
-async function executeGeminiCall(params: {
-  prompt: string;
-  profile: FamilyProfile;
-  location: LocationData;
-  apiKey: string;
-  model: GeminiModelName;
-  signal: AbortSignal;
-}): Promise<GenAIMessage> {
-  const { prompt, profile, location, apiKey, model, signal } = params;
-
-  // Anonymize family profile to strictly protect user privacy (no surnames or private notes transmitted)
   const anonymized = anonymizeFamilyProfile(profile);
+  const anonLoc = anonymizeLocationForAI(location);
 
   const indAqi = location.calculatedAQI?.indianNAQI?.value ?? 150;
   const usAqi = location.calculatedAQI?.usEPAAQI?.value ?? 150;
   const pblHeight = location.weather.boundaryLayerHeightMeters ?? 220;
   const cigData = calculateCigaretteEquivalence(location.pollutants.pm25);
 
-  const systemInstruction = `
+  const systemInstruction = buildSystemInstruction({
+    anonymized,
+    anonLoc,
+    indAqi,
+    usAqi,
+    pblHeight,
+    cigData,
+    location,
+    profile,
+  });
+
+  const contents = buildMultiTurnContents(conversationHistory, systemInstruction, prompt);
+
+  try {
+    const res = await fetch('/api/gemini', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents, model }),
+      signal,
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data && typeof data.text === 'string' && data.text.trim()) {
+        const structuredBreakdown = parseStructuredResponse(data.text, location, profile);
+        return {
+          id: `msg-${Date.now()}`,
+          sender: 'assistant',
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          text: data.text,
+          structuredBreakdown,
+          suggestedActions: extractSuggestedActions(prompt),
+          impactBadge: {
+            pm25Cut: structuredBreakdown?.expectedImpact ? structuredBreakdown.expectedImpact.slice(0, 45) : 'Personal Exposure Cut: Calculated',
+            co2Saved: 'Zero-combustion lifestyle active',
+            lungProtection: 'Shielded during inversion peak',
+          },
+        };
+      }
+    }
+  } catch {
+    // Server proxy not active or static deployment without backend
+  }
+
+  return null;
+}
+
+/**
+ * Builds multi-turn conversation contents adhering to Gemini API role mapping.
+ * Capped to last 6 messages to keep token payload bounded.
+ */
+function buildMultiTurnContents(
+  history: GenAIMessage[] | undefined,
+  systemInstruction: string,
+  currentPrompt: string
+): Array<{ role: 'user' | 'model'; parts: { text: string }[] }> {
+  const contents: Array<{ role: 'user' | 'model'; parts: { text: string }[] }> = [];
+
+  const recent = (history || []).slice(-6);
+  for (const m of recent) {
+    if (m.sender === 'user' && m.text) {
+      contents.push({ role: 'user', parts: [{ text: sanitizeUserInput(m.text, 500) }] });
+    } else if (m.sender === 'assistant' && m.text) {
+      contents.push({ role: 'model', parts: [{ text: sanitizeUserInput(m.text.slice(0, 800), 800) }] });
+    }
+  }
+
+  contents.push({
+    role: 'user',
+    parts: [{ text: `${systemInstruction}\n\nUser Question: ${currentPrompt}` }],
+  });
+
+  return contents;
+}
+
+function buildSystemInstruction(context: {
+  anonymized: ReturnType<typeof anonymizeFamilyProfile>;
+  anonLoc: ReturnType<typeof anonymizeLocationForAI>;
+  indAqi: number;
+  usAqi: number;
+  pblHeight: number;
+  cigData: ReturnType<typeof calculateCigaretteEquivalence>;
+  location: LocationData;
+  profile: FamilyProfile;
+}): string {
+  const { anonymized, anonLoc, indAqi, usAqi, pblHeight, cigData, location, profile } = context;
+
+  return `
 You are AeroPulse 2.0 AI: a premier environmental health scientist, atmospheric physicist, and household aerosol engineer.
 You are counseling an urban household during winter smog and thermal inversions.
 
-CURRENT LIVE SCIENTIFIC CONTEXT:
-- Location: ${location.city}, ${location.country} (${location.latitude.toFixed(2)}°N, ${location.longitude.toFixed(2)}°E)
-- Data Freshness: ${location.sourceType === 'live_api' ? 'Live Open-Meteo API Feed' : 'Seasonal Reference Baseline'} (Timestamp: ${location.dataTimestamp})
+CURRENT SCIENTIFIC CONTEXT:
+- Regional Basin: ${anonLoc.city}, ${anonLoc.country} (~${anonLoc.approxLatitude}°N, ~${anonLoc.approxLongitude}°E)
+- Data Freshness: ${location.sourceType === 'live_api' ? 'Live Atmospheric Feed' : 'Seasonal Reference Baseline'} (Timestamp: ${location.dataTimestamp})
 - Atmospheric Metrics:
   * PM2.5: ${location.pollutants.pm25} µg/m³ | PM10: ${location.pollutants.pm10} µg/m³
   * NO2: ${location.pollutants.no2} µg/m³ | SO2: ${location.pollutants.so2} µg/m³ | CO: ${location.pollutants.co} mg/m³ | O3: ${location.pollutants.ozone} µg/m³
@@ -178,19 +254,91 @@ SCIENTIFIC GUIDELINES:
    PART 7: CONFIDENCE LEVEL (High, Moderate, or Low/Empirical)
    PART 8: IMPORTANT LIMITATIONS (e.g. Non-medical disclaimer, boundary layer height estimation note)
 `;
+}
+
+/**
+ * Calls Gemini API with exponential backoff retry for HTTP 429, 500, 502, 503, 504 and network errors.
+ */
+async function callGeminiAPIWithRetry(params: {
+  prompt: string;
+  conversationHistory?: GenAIMessage[];
+  profile: FamilyProfile;
+  location: LocationData;
+  apiKey: string;
+  model: GeminiModelName;
+  signal: AbortSignal;
+}): Promise<GenAIMessage> {
+  const { prompt, conversationHistory, profile, location, apiKey, model, signal } = params;
+  const maxRetries = 2;
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await executeGeminiCall({ prompt, conversationHistory, profile, location, apiKey, model, signal });
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        lastError = error;
+      } else {
+        lastError = new Error(scrubErrorDetails(error));
+      }
+
+      if (signal.aborted) throw error;
+
+      // Don't retry client-side 400 Bad Request or 401/403 (invalid key)
+      const status = (error as ApiCallError)?.status;
+      if (status === 400 || status === 401 || status === 403) {
+        throw error;
+      }
+
+      if (attempt < maxRetries) {
+        // Exponential backoff with jitter: 1s, 2s...
+        const delayMs = Math.min(1000 * Math.pow(2, attempt) + Math.random() * 400, 5000);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
+    }
+  }
+
+  throw lastError || new Error('Gemini API communication failed after retries');
+}
+
+async function executeGeminiCall(params: {
+  prompt: string;
+  conversationHistory?: GenAIMessage[];
+  profile: FamilyProfile;
+  location: LocationData;
+  apiKey: string;
+  model: GeminiModelName;
+  signal: AbortSignal;
+}): Promise<GenAIMessage> {
+  const { prompt, conversationHistory, profile, location, apiKey, model, signal } = params;
+
+  // Anonymize family profile and location to strictly protect user privacy
+  const anonymized = anonymizeFamilyProfile(profile);
+  const anonLoc = anonymizeLocationForAI(location);
+
+  const indAqi = location.calculatedAQI?.indianNAQI?.value ?? 150;
+  const usAqi = location.calculatedAQI?.usEPAAQI?.value ?? 150;
+  const pblHeight = location.weather.boundaryLayerHeightMeters ?? 220;
+  const cigData = calculateCigaretteEquivalence(location.pollutants.pm25);
+
+  const systemInstruction = buildSystemInstruction({
+    anonymized,
+    anonLoc,
+    indAqi,
+    usAqi,
+    pblHeight,
+    cigData,
+    location,
+    profile,
+  });
+
+  const contents = buildMultiTurnContents(conversationHistory, systemInstruction, prompt);
 
   // Pass API key via x-goog-api-key header to prevent query parameter leakage in URL logs/proxies
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
   const payload = {
-    contents: [
-      {
-        role: 'user',
-        parts: [
-          { text: `${systemInstruction}\n\nUser Question: ${prompt}` }
-        ]
-      }
-    ],
+    contents,
     generationConfig: {
       temperature: 0.6,
       maxOutputTokens: 1200,

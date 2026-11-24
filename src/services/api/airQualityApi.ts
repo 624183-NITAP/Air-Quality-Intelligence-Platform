@@ -127,9 +127,36 @@ export async function fetchLiveAirQualityAndWeather(
     const windDirDeg = Math.round(currWeather.wind_direction_10m ?? 0);
     const surfacePressureHpa = Math.round(currWeather.surface_pressure ?? 1013);
 
-    // Boundary Layer Height from weather hourly current hour
+    // Accurately match Boundary Layer Height to observation timestamp (avoid blindly using index 0)
+    const hourlyTimesWeather = weatherData.hourly?.time || [];
     const hourlyBLH = weatherData.hourly?.boundary_layer_height || [];
-    const currentBLH = hourlyBLH.length > 0 ? Math.round(hourlyBLH[0]) : 350;
+    const obsTimeStr = currWeather.time || currAQ.time;
+    let targetBLHIndex = 0;
+
+    if (obsTimeStr && hourlyTimesWeather.length > 0) {
+      const exactIdx = hourlyTimesWeather.indexOf(obsTimeStr);
+      if (exactIdx !== -1) {
+        targetBLHIndex = exactIdx;
+      } else {
+        const prefix = obsTimeStr.slice(0, 13);
+        const prefixIdx = hourlyTimesWeather.findIndex((t: string) => t.startsWith(prefix));
+        if (prefixIdx !== -1) {
+          targetBLHIndex = prefixIdx;
+        } else {
+          const nowMs = new Date(obsTimeStr).getTime();
+          let bestDiff = Infinity;
+          hourlyTimesWeather.forEach((t: string, i: number) => {
+            const diff = Math.abs(new Date(t).getTime() - nowMs);
+            if (diff < bestDiff) {
+              bestDiff = diff;
+              targetBLHIndex = i;
+            }
+          });
+        }
+      }
+    }
+
+    const currentBLH = hourlyBLH.length > targetBLHIndex ? Math.round(hourlyBLH[targetBLHIndex]) : 350;
 
     // Atmospheric Inversion classification based on physical planetary boundary layer height & wind
     let inversionCondition: LocationData['weather']['inversionCondition'] = 'Unstable / Well-Mixed';
@@ -151,13 +178,14 @@ export async function fetchLiveAirQualityAndWeather(
     const compassIndex = Math.round(windDirDeg / 22.5) % 16;
     const windCompass = compassDirs[compassIndex];
 
-    // Compute standard Indian NAQI & US EPA AQI
+    // Compute standard Indian NAQI & US EPA AQI with all available pollutants
     const indianNAQI = calculateIndianNAQI({
       pm25: pm25Val,
       pm10: pm10Val,
       no2: no2Val,
       so2: so2Val,
       co: coVal,
+      ozone: ozoneVal,
     });
     const usEPAAQI = pm25ToUSEPAAQI(pm25Val);
 

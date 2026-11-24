@@ -33,7 +33,7 @@ export interface AQIResult {
   value: number;
   scale: AirQualityScale;
   category: string;
-  dominantPollutant: 'PM2.5' | 'PM10' | 'NO2' | 'SO2' | 'CO' | 'O3';
+  dominantPollutant: 'PM2.5' | 'PM10' | 'NO2' | 'SO2' | 'CO' | 'O3' | 'NH3' | 'Pb';
   colorToken: {
     bg: string;
     text: string;
@@ -42,6 +42,19 @@ export interface AQIResult {
     badgeText: string;
   };
   healthAdvisory: string;
+  subIndices?: {
+    pm25?: number;
+    pm10?: number;
+    no2?: number;
+    so2?: number;
+    co?: number;
+    ozone?: number;
+    nh3?: number;
+    pb?: number;
+  };
+  monitoredPollutantsCount?: number;
+  isDataSufficient?: boolean;
+  dataSufficiencyNote?: string;
 }
 
 export interface WeatherMetrics {

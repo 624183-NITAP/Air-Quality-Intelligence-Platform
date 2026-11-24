@@ -18,6 +18,7 @@ export const FamilyActionPlanModal: React.FC<FamilyActionPlanModalProps> = ({
   location,
 }) => {
   const trapRef = useFocusTrap<HTMLDivElement>({ isOpen, onClose });
+  const [generationDate] = React.useState(() => new Date().toLocaleDateString());
 
   if (!isOpen) return null;
 
@@ -25,7 +26,6 @@ export const FamilyActionPlanModal: React.FC<FamilyActionPlanModalProps> = ({
   const indAqi = location.calculatedAQI?.indianNAQI?.value ?? 150;
   const indCat = location.calculatedAQI?.indianNAQI?.category ?? 'Severe';
   const pblHeight = location.weather.boundaryLayerHeightMeters ?? 220;
-  const generationDate = React.useMemo(() => new Date().toLocaleDateString(), []);
 
   const handlePrint = () => {
     window.print();
